@@ -37,12 +37,18 @@ from processing.core.parameters import (ParameterRaster,
                                         ParameterVector,
                                         ParameterBoolean,
                                         ParameterString,
-                                        ParameterSelection )
-from processing.core.outputs import  OutputRaster ###OutputVector
+                                        ParameterSelection,
+					ParameterTableField,
+                                        ParameterNumber,
+                                        ParameterRaster)	
+from processing.core.outputs import  OutputVector
 from processing.tools import dataobjects, vector
 
 
-class ViewshedBinary(GeoAlgorithm):
+from PyQt4.QtGui import * #this is for message box : should use processing log ?
+
+
+class ViewshedPoints(GeoAlgorithm):
     """This is an example algorithm that takes a vector layer and
     creates a new one just with just those features of the input
     layer that are selected.
@@ -59,13 +65,23 @@ class ViewshedBinary(GeoAlgorithm):
     # used when calling the algorithm from another algorithm, or when
     # calling from the QGIS console.
 
-    INPUT_POINTS = 'INPUT_POINTS'
+    OBSERVER_POINTS = 'OBSERVER_POINTS'
     INPUT_DEM = 'INPUT_RASTER'
 
-    OUTPUT_RASTER = 'OUTPUT_RASTER'
+    OUTPUT_VECTOR = 'OUTPUT_VECTOR'
+
+    OBSERVER_ID = 'OBSERVER_ID'
 
     RADIUS = 'RADIUS'
+    RADIUS_FIELD = 'RADIUS_FIELD'
+    
     OBS_HEIGHT = 'OBS_HEIGHT'
+    OBS_HEIGHT_FIELD = 'OBS_HEIGHT_FIELD'
+
+    TARGET_HEIGHT = 'TARGET_HEIGHT'
+    TARGET_HEIGHT_FIELD = 'TARGET_HEIGHT_FIELD'
+
+    MOVE_TOP = 'MOVE_TOP'
     
     def defineCharacteristics(self):
         """Here we define the inputs and output of the algorithm, along
@@ -73,33 +89,70 @@ class ViewshedBinary(GeoAlgorithm):
         """
 
         # The name that the user will see in the toolbox
-        self.name = 'Binary viewshed'
+        self.name = 'Create viewpoints'
 
         # The branch of the toolbox under which the algorithm will appear
         self.group = 'Visibility analysis'
 
         # We add the input vector layer. It can have any kind of geometry
-        # It is a mandatory (not optional) one, hence the False argument
-        self.addParameter(ParameterVector(self.INPUT_POINTS,
-            self.tr('Observation points'), [ParameterVector.VECTOR_TYPE_ANY], False))
-			
-		
-        self.addParameter(ParameterRaster(self.INPUT_DEM,
-            self.tr('Elevation model (DEM)'),  False))
-
-        self.addParameter(ParameterString(self.RADIUS,
-                                          self.tr("Radius of analysis"),
-                                                    '5000', False)) 
-
-        self.addParameter(ParameterString(self.OBS_HEIGHT,
-                                          self.tr("Observer height"),
-                                                    '1.6', False))
-
-        self.addOutput(OutputRaster(self.OUTPUT_RASTER,
-                                    self.tr('Output layer')))
+        # It is a mandatory (not optional) one, hence the False argument    
 
 
+        self.addParameter(ParameterVector(
+            self.OBSERVER_POINTS,
+            self.tr('Observer location(s)'),
+            0)) #dataobjects.TYPE_VECTOR_POINT
+       
+        self.addParameter(ParameterTableField(
+            self.OBSERVER_ID,
+            self.tr('Observer ids (leave unchanged to use feature ids)'),
+            self.OBSERVER_POINTS,
+            optional=True))
+
+        self.addParameter(ParameterNumber(
+            self.RADIUS,
+            self.tr("Radius of analysis, meters"),
+            0.0, 99999999.999, 5000))
+  
+        self.addParameter(ParameterTableField(
+            self.RADIUS_FIELD,
+            self.tr('Field value for analysis radius'),
+            self.OBSERVER_POINTS,
+            optional=True))
+
+        self.addParameter(ParameterNumber(
+            self.OBS_HEIGHT,
+            self.tr('Observer height, meters'),
+            0.0, 999.999, 1.6))
         
+        self.addParameter(ParameterTableField(
+            self.OBS_HEIGHT_FIELD,
+            self.tr('Field value for observer height'),
+            self.OBSERVER_POINTS,
+            optional=True))
+
+        self.addParameter(ParameterNumber(
+            self.TARGET_HEIGHT,
+            self.tr('Target height, meters'),
+            0.0, 999.999, 0.0))
+        
+        self.addParameter(ParameterTableField(
+            self.TARGET_HEIGHT_FIELD,
+            self.tr('Target height, meters'),
+            self.OBSERVER_POINTS,
+            optional=True))
+
+        self.addParameter(ParameterNumber(
+            self.MOVE_TOP,
+            self.tr('Find highest elevation, radius in meters'),
+            0.0, 9999.99, 0.0))
+##
+        self.addParameter(ParameterRaster(self.INPUT_DEM,
+            self.tr('Elevation model for moving points'),  False))
+
+
+        self.addOutput(OutputVector(self.OUTPUT_VECTOR,
+                                    self.tr('Output viewshed points')))
 # optional param
 #        self.addParameter(ParameterString(self.RADIUS,
 #                                          self.tr("SOME MOCK PARAMETER"),
@@ -118,59 +171,68 @@ class ViewshedBinary(GeoAlgorithm):
         from qgis.core import QgsRectangle
         import numpy as np
         
-        from .modules import doViewshed as ws
+        
         from .modules import Points as pts
         from .modules import Raster as rst
 
         # The first thing to do is retrieve the values of the parameters
         # entered by the user
-        Raster_path = self.getParameterValue(self.INPUT_DEM)
-        Points_path = self.getParameterValue(self.INPUT_POINTS)
+        #Raster_path = self.getParameterValue(self.INPUT_DEM)
+        Points_path = self.getParameterValue(self.OBSERVER_POINTS)
         
-        Output = self.getOutputValue(self.OUTPUT_RASTER)
+        Output = self.getOutputValue(self.OUTPUT_VECTOR)
 
+        observer_id = self.getParameterValue(self.OBSERVER_ID)
+        
+        observer_height = self.getParameterValue(self.OBS_HEIGHT)
+        observer_height_field =  self.getParameterValue(self.OBS_HEIGHT_FIELD)
+        
+        radius = self.getParameterValue(self.RADIUS)
+        radius_field = self.getParameterValue(self.RADIUS_FIELD)
+        
+        target= self.getParameterValue(self.TARGET_HEIGHT)
+        target_field= self.getParameterValue(self.TARGET_HEIGHT_FIELD)
 
-        observer_height = float(self.getParameterValue(self.OBS_HEIGHT))
-        radius = float(self.getParameterValue(self.RADIUS))
+        move = self.getParameterValue(self.MOVE_TOP)
 
         
         
                         
-        dem = rst.Raster(Raster_path)
+        
                         # crs=  layer.crs().toWkt() #I do not have layer object ??
                         # write_mode = 'cumulative', if cumulative
         
         
-        points = pts.Points(Points_path, dem.extent, dem.pix, observer_height, radius) # and all other stuff ....
+        points = pts.Points(Points_path) # and all other stuff ....
 
-        # to add up results
-        if points.count >1:
-            #cannot determine size, only write mode : to implement in the future...
-            dem.set_buffer_mode ( 1)
-
-
-    
-
-        output_options=["Binary", 99999]
+        print 5555
+        success = points.clean_parameters( observer_height, radius,
+                           z_targ = target ,
+                           field_ID = observer_id,
+                           field_zobs = observer_height_field,
+                           field_ztarg=target_field,
+                           field_radius=radius_field)
         
-	#will assign the result to dem class (?)	
-        success =  ws.Viewshed (points, dem, 
-                              output_options,
-                              Target_points=None,
-                              curvature=0, refraction=0, algorithm = 1)
+        if success != 0 :
+            print success
+            QMessageBox.information(None, "Duplicate IDs!", str(success))
+            return
 
-        
 
-        
-        """
-
+        if move:
             
-            Perhaps there could be problems when registered crs
-            is not matching the one chosen in QGIS ??
-            In 'Raster' class : self.crs = crs if crs else gdal_raster.GetProjection()
-            so to override on can do Dem_raster.crs = ....
+
+            points.move_top(self.getParameterValue(self.INPUT_DEM), move)
+        
+        points.write_points (Output, points.crs)
+        
+        """ 
+        Perhaps there could be problems when registered crs
+        is not matching the one chosen in QGIS ??
+        In 'Raster' class : self.crs = crs if crs else gdal_raster.GetProjection()
+        so to override on can do Dem_raster.crs = ....
         """
-        dem.write_result(Output)
+       # dem.write_result(Output)
         
 
         """

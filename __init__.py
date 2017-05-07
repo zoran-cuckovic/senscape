@@ -25,6 +25,7 @@ __author__ = 'Zoran Čučković'
 __date__ = '2017-05-01'
 __copyright__ = '(C) 2017 by Zoran Čučković'
 
+from senspace_plugin import SenspacePlugin
 
 # noinspection PyPep8Naming
 def classFactory(iface):  # pylint: disable=invalid-name
@@ -33,6 +34,5 @@ def classFactory(iface):  # pylint: disable=invalid-name
     :param iface: A QGIS interface instance.
     :type iface: QgsInterface
     """
-    #
-    from .senspace import SenspacePlugin
+    
     return SenspacePlugin()

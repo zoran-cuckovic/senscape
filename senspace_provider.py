@@ -32,14 +32,16 @@ __revision__ = '$Format:%H$'
 from processing.core.AlgorithmProvider import AlgorithmProvider
 from processing.core.ProcessingConfig import Setting, ProcessingConfig
 
-from .algorithms.viewshed_binary import  ViewshedBinary
-from .algorithms.viewshed_fixed import  ViewshedFixed
 
-from .algorithms.networks_position import  NetworkPositions
-from .algorithms.networks_rank import NetworkRanks
-from .algorithms.networks_create import NetworkCreate
-from .algorithms.networks_min_accum import NetworkMinAccum
-from .algorithms.networks_vector import NetworkVector
+from .algorithms.viewshed_raster  import  Viewshed
+from .algorithms.viewshed_points import  ViewshedPoints
+from .algorithms.viewshed_intervisibility import  Intervisibility
+
+#from .algorithms.networks_position import  NetworkPositions
+#from .algorithms.networks_rank import NetworkRanks
+#from .algorithms.networks_create import NetworkCreate
+#from .algorithms.networks_min_accum import NetworkMinAccum
+#from .algorithms.networks_vector import NetworkVector
 
 
 class SenspaceProvider(AlgorithmProvider):
@@ -53,7 +55,7 @@ class SenspaceProvider(AlgorithmProvider):
         self.activate = False
 
         # Load algorithms
-        self.alglist = [ ViewshedFixed()]
+        self.alglist = [ Intervisibility(), Viewshed(), ViewshedPoints()  ]
         """
         TODO
 			NetworkPositions(), 

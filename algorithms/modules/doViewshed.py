@@ -18,9 +18,16 @@ email : /
 * *
 ***************************************************************************/
 """
-# TEST: points out of raster, raster rotated, raster rectnagular pixels
 
-from __future__ import division 
+
+
+from __future__ import division
+
+"""
+BUGS
+- interpolation outside data window (on borders) : copy border values
+
+"""
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
@@ -46,6 +53,7 @@ INVISIBILITY_DEPTH = 1
 HORIZON = 2
 HORIZON_FULL = 3
 ANGULAR_SIZE = 4
+# not used: separate function!
 INTERVISIBILITY = 5
 
 
@@ -61,7 +69,7 @@ def dist(x1,y1,x2,y2, estimation=False):
 """
 Return a map of distances from the central pixel.
 Attention: these are pixel distances, not geographical !
-(to convert to geographical distances: multiplu with pixel size
+(to convert to geographical distances: multiply with pixel size)
 """
 def distance_matrix ( radius_pix, squared=False):
           
@@ -74,16 +82,16 @@ def distance_matrix ( radius_pix, squared=False):
     else: return temp_x[:,None] + temp_y[None,:]
 
 """
-Return a negative factor to lower each value according t curvature of the earth
+Model vertical drop from a plane to spherical surface (of the Earth)
 
 """
-def curvature_matrix(radius_pix, diameter_earth, refraction, pixel_size):
+def curvature_matrix(radius_pix, diameter_earth_pixels, refraction):
 
     dist_squared = distance_matrix(radius_pix, squared=True)
     # all distances are in pixels in doViewshed module !!
-    pixel_diameter = diameter_earth / pixel_size
+    #pixel_diameter = diameter_earth / pixel_size
         
-    return (dist_squared / pixel_diameter) * 1 - refraction
+    return (dist_squared / diameter_earth_pixels) * 1 - refraction
     
     
 
@@ -176,13 +184,16 @@ def error_matrix(radius, size_factor=1):
     
 def viewshed_raster (option, data,                  
               error_matrix, error_mask, indices, indices_interpolation,                  
-              target_matrix=None, distance_matrix=None, algorithm = 1):
+              target_matrix=None, distance_matrix=None, interpolate = True):
 
 
     #np.take is  much more efficient than using "fancy" indexing (stack overflow says ...)
     #... but it flattens arrays ! TODO...
-
-    mx_vis = np.ones(data.shape)#ones so that the centre gets True val
+    
+    center = int(data.shape[0] / 2) #ugly, but passing is as argument is even uglier...
+    # could be ... data.window_center, but data should be Raster object ...
+    
+    mx_vis = np.zeros(data.shape)#if np.ones then the centre gets True val (for Binary)
    
     mx = indices[: ,:, 1]; my = indices[: ,:, 0]
 
@@ -192,6 +203,7 @@ def viewshed_raster (option, data,
     # (rather than producing multiple indices matrices :) )
     views = [ np.s_[:], np.s_[ :, ::-1],
               np.s_[ ::-1, :], np.s_[ ::-1, ::-1] ]
+       
 
     for steep in [False, True]: #- initially it's steep 0, 0
 
@@ -199,8 +211,9 @@ def viewshed_raster (option, data,
             
             me_x, me_y = me_y , me_x 
             mx, my = my,mx 
-            
 
+   
+        
         for view in views:                
 
             view_d = data[view]
@@ -209,7 +222,7 @@ def viewshed_raster (option, data,
             interp = view_d[mx,my]
            
 
-            if algorithm > 0: #do interpolation
+            if interpolate: 
                 interp += (view_d[me_x, me_y] - interp) * error_matrix
            
                            
@@ -223,7 +236,7 @@ def viewshed_raster (option, data,
                 # substitute target matrix, but only after test matrix is calculated!
                 interp = view_tg[mx,my] 
 
-                if algorithm > 0: 
+                if interpolate: 
                 
                 # could be done only on "good pixels", those with minimal error !!
                 # use mask on mx, my etc  - test for speed ...
@@ -232,7 +245,6 @@ def viewshed_raster (option, data,
             # non-interpolated, normal                  
            # v = data[mx,my] == np.maximum.accumulate(data[mx,my], axis=1)
 
-           
             if option == BINARY_VIEWSHED :  v = interp >= test_val
            
             elif option == INVISIBILITY_DEPTH : v = interp - test_val
@@ -242,48 +254,62 @@ def viewshed_raster (option, data,
                 v[:, 1:] = np.diff(test_val)
 
                 
-            elif option == HORIZON : # = true or last horizon
+            elif option == HORIZON: # = true or last horizon
 
-                v = interp >= test_val
-                #to avoid confusion because of hidden corners
-                #problematic : cannot be un-masked for rectangular output!
-                v[view_d >= radius_pix + 2] = False
+                v = interp >= test_val               
+                                
                                            
                 #select last pixel (find max value in a reversed array (last axis!)
                 #argmax stops at first occurence
                 #indices have to be re-reversed :)
                 #gives a flat array of 1 index for each row (axis=1)
-                rev_max = radius_pix - np.argmax(v[:, ::-1], axis=1) -1
+                rev_max = center - np.argmax(v[:, ::-1], axis=1) -1
                                
                 v[:] = False
 
-                #radius = row n° for fancy index (should be some nicer way...)
+                #radius = row n° for fancy index (should be some nicer way...               
 
+                v[ np.arange(center +1), rev_max.flat ] = True
+
+ 
+
+            elif option == HORIZON_FULL:
                 
-                v[ np.arange(radius_pix +1), rev_max.flat ] = True
-
-                v[: , -1] = 0 #artifacts at borders (false horizons)
-                #(all matrix edges are marked as horizon - if visibilty zone gets cut off there) 
+                v = interp >= test_val     
+                #diff always returns one place less than full array! 
+                v[:, :-1] = np.diff((interp >= test_val).astype(int)) *-1
+                           
+                # 1: make = True/False array;
+                # 2: turn to integers because boolean operations give True False only
+                # 3 diff = x(i)- x(i-1) = -1 or 1 for breaks
+                # * -1 so that good breaks become +1, instead of -1
+                                
+                v[v == -1]=0 #delete the beginning of  visible areas
                             
             #mx_vis [mx[mask], my[mask]]= v[mask] #np.absolute(mx_err[mask]) for errors
 
-            view_o [mx[error_mask], my[error_mask]]= v[error_mask] #view of mx_vis, NOT A COPY!
+            #view of mx_vis, NOT A COPY!
+            view_o [mx[error_mask], my[error_mask]]= v[error_mask]
+            
 
+    # handling some details ...
+    if option== BINARY_VIEWSHED: mx_vis[center,center]=True
 
-
-# --------------TODO !!!!!! -------------
-    if option== INVISIBILITY_DEPTH:
+    elif option== INVISIBILITY_DEPTH:
             # = OPTION ANGLE ZA ALGO : angle diff , angle incidence ???
                 
-        max_vis *= mx_dist 
-                # assign target height to the centre (not observer !)
-                # = first neigbour that is always visible :) 
-        matrix_vis[radius_pix,radius_pix]=matrix_vis[radius_pix,radius_pix+1]
+        mx_vis *= distance_matrix 
+        # assign target height to the centre (not observer height !)
+        # = first neigbour that is always visible :)
+
+        mx_vis[center,center]=mx_vis[center,center+1]
+
+    
 # ---------------------------------------        
     return mx_vis
 
 
-def intervisibility(point, source_dict, targets_dict, interpolation = True):
+def rasterised_line (x,y, x2, y2, interpolation = True):
 
     """
     Calculate intervisibilty lines from the observer point (always in the centre of the matrix)
@@ -294,121 +320,163 @@ def intervisibility(point, source_dict, targets_dict, interpolation = True):
     Bresenham's loop: < 5% time
     """
 
-    out=[]
+ 
+        
+    dx = abs(x2 - x); dy = abs(y2 - y)
+    steep = (dy > dx)
+    #direction of movement : plus or minus in the coord. system
+    sx = 1 if (x2 - x) > 0 else -1
+    sy = 1 if (y2 - y) > 0 else -1
 
-    x_pix = source_dict[point]["x_pix"]
-    y_pix = source_dict[point]["y_pix"]
+    if steep: # if the line is steep: change x and y
+        #x,y = y,x they are the same !!
+        
+        dx,dy = dy,dx
+        sx,sy = sy,sx
+
+    D = 0
+  
+    #for interpolation
+   # slope = dy / dx *sx *sy #!!
+   #the operators for negative quadrants (we do need dx, dy as absolute to verify steepness, to search distances...)
+
+    dx_short = dx-1 # to leave out the last pixel (target)
     
-    
-    
-    for tg in source_dict[point]["targets"]:
-
-        
-        
-        x2_pix = targets_dict[tg]["x_pix"]
-        y2_pix = targets_dict[tg]["y_pix"]
-        target_offset = targets_dict[tg]["z_targ"]
-
-        #adjust for local raster
-        x2 = radius_pix + (x2_pix - x_pix)
-        y2 = radius_pix + (y2_pix - y_pix)
+    #store indices 1) los, 2) neighbours, 3) error
+    mx_line = np.zeros((dx_short, 2), dtype=int)
+    if interpolation:
+        mx_neighbours = np.zeros((dx_short,2), dtype=int)
+        mx_err = np.zeros((dx_short))
 
 
-        h = data[y2,x2] #data : global
-        d= mx_dist[y2,x2]#distances : global
-       
-        x,y = radius_pix, radius_pix #re-center point!
-        
-        dx = abs(x2 - x); dy = abs(y2 - y)
-        steep = (dy > dx)
-        #direction of movement : plus or minus in the coord. system
-        sx = 1 if (x2 - x) > 0 else -1
-        sy = 1 if (y2 - y) > 0 else -1
+    for i in xrange (0, dx_short): 
 
-        if steep: # if the line is steep: change x and y
-            #x,y = y,x they are the same !!
-            
-            dx,dy = dy,dx
-            sx,sy = sy,sx
-   
-        D = 0
-      
-        #for interpolation
-       # slope = dy / dx *sx *sy #!!
-       #the operators for negative quadrants (we do need dx, dy as absolute to verify steepness, to search distances...)
-
-        dx_short = dx-1 # to leave out the last pixel (target)
-        
-        #store indices 1) los, 2) neighbours, 3) error
-        mx_line = np.zeros((dx_short))
-        if interpolation:
-            mx_neighbours = np.zeros((dx_short))
-            mx_err = np.zeros((dx_short))
-
-   
-        for i in xrange (0, dx_short): 
-
-        # ---- Bresenham's algorithm (understandable variant)
-        # http://www.cs.helsinki.fi/group/goa/mallinnus/lines/bresenh.html       
-            x += sx
-            if 2* (D + dy) < dx:
-                D += dy # y remains
-            else:
-                y += sy
-                D += dy - dx
-                           
-            #unfortunately, np allows for negative values...
-            # when x or y are too large, the break is on try-except below
-            
-# OVO NEMA SMISLA : BRISATI !!??
-            if x < 0 or y < 0 : break
-# '''''''''''''''''''''''''''''''''''''''''
-      
-            # --------- coordinates not unpacked ! ------------
-            
-            mx_line[i] = data[y, x] if not steep else data[x, y] 
-          
-            # for interpolation
-            # D is giving the amount and the direction of error
-            # because of flipping, we take y+sy, x+sx rather than y +/- 1  
-            if steep: mx_neighbours[i]=data[x + sx if D > 0 else x - sx, y]
-            else: mx_neighbours[i]=data[y + sy if D>0 else y - sy, x]
-            
-            mx_err [i]=D
-                
-
-        if target_offset: h += target_offset/d # raise h to target top
-                
-        if interpolation: 
-            interp = np.max( mx_line + (mx_neighbours -  mx_line)
-                           *  abs(mx_err / dx))
-
-            height = ( h  - interp )*d
-
-            if height > target_offset: height=target_offset
-            #because it represents pixel height! 
-                
-            out.append( [tg, height >=0, height, d])
-
+    # ---- Bresenham's algorithm (understandable variant)
+    # http://www.cs.helsinki.fi/group/goa/mallinnus/lines/bresenh.html       
+        x += sx
+        if 2* (D + dy) < dx:
+            D += dy # y remains
         else:
-                     
-            out.append( [tg, h > np.max(mx_line), -9999, d])
+            y += sy
+            D += dy - dx
+                       
+        #unfortunately, np allows for negative values...
+        # when x or y are too large, the break is on try-except below
+        
+  
+        # --------- coordinates not unpacked ! ------------
+        
+        mx_line[i, :] = [y, x] if not steep else [x, y] 
+      
+        # for interpolation
+        # D is giving the amount and the direction of error
+        # because of flipping, we take y+sy, x+sx rather than y +/- 1  
+        if steep: mx_neighbours[i, :]=[x + sx if D > 0 else x - sx, y]
+        else: mx_neighbours[i, :]= [y + sy if D>0 else y - sy, x]
+        
+        mx_err [i]=D #error is D / dx !
+
+    return mx_line, mx_neighbours, mx_err/dx
             
-    return out
 
 
+##
+"""
+Calculates 
 
+"""
+
+def intervisibility2 (points_class, targets_class, raster_class,
+                      curvature=0, refraction=0, interpolate = True):
+
+
+    ###########################"
+    edges = {}
+
+    # RasterPath= str(QgsMapLayerRegistry.instance().mapLayer(Raster_layer).dataProvider().dataSourceUri())
+    points = points_class.pt
+    targets = targets_class.pt
+
+    radius_pix = int(points_class.max_radius)
+    
+    raster_class.set_master_window(radius_pix)
+    
+    mx_dist = distance_matrix(radius_pix)
+         
+    if curvature:
+        #everything is in pixels here, so the earth diam
+        #has to accord!
+        mx_curv = curvature_matrix(radius_pix,
+                    raster_class.get_diameter_earth(pixels=True),
+                                    refraction )
+
+    else: mx_curv = 0
+       
+    for id1 in points :
+
+        try: tg = points[id1]["targets"]
+        except: continue
+        
+        x,y= points[id1]["x_pix"],  points[id1]["y_pix"]
+        z= points[id1]["z"]
+        
+        # radius is in pixels !
+        r=  points[id1]["radius"]
+        r_pix= int (r)
+
+     
+        raster_class.open_window (x, y, r_pix)
+
+        data=raster_class.window
+        
+        z_abs = z + data [r_pix,r_pix]
+        
+        # level all according to observer
+        data -=  z_abs + mx_curv 
+    
+        data /= mx_dist #all one line = (data -z - mxcurv) /mx_dist
+
+        for id2 in tg:
+            #adjust for local raster (diff x)
+            x2 = r_pix + (targets[id2]["x_pix"] - x)
+            y2 = r_pix + (targets[id2]["y_pix"] - y)
+
+            angle_targ = data[y2,x2] 
+            d = mx_dist[y2,x2]
+            
+            z_targ = targets[id2]["z_targ"]
+            
+
+            mx_line, mx_neighbours, mx_err = rasterised_line (
+                                    r_pix, r_pix, x2, y2,
+                                    interpolation= interpolate)
+
+            
+            l_x, l_y = mx_line[:,1], mx_line[:,0]
+
+            angles = data[l_y,l_x]            
+            
+            if interpolate:
+                n_x, n_y = mx_neighbours[:,1], mx_neighbours[:,0]
+                angles +=  (data[n_y, n_x] - angles) * abs(mx_err)
+                
+            size = (angle_targ - np.max(angles)) *d + z_targ
+
+            # when visible, it takes into account pixel elevation
+            # (rlative to preeceding one), this needs to be corrected
+            edges[id1, id2]= size # VERIFY ERRORS!! if size < z_targ else z_targ
+            #distance : use qgis, here it is pixelated!
+                          
+    return edges  
+    
 """
 Opens a DEM and produces viewsheds from a set of points. Algorithms for raster ouput are all
 based on a same approach, explained at zoran-cuckovic.com/landscape-analysis/visibility/.
 Intervisibility calculation, however, is on point to point basis and has its own algorithm.
-
-
-FUNCTION TO RASTER CLASS !!!!
 """
 
 
-def Viewshed (Obs_points, Dem_raster, 
+def Viewshed (points_class, raster_class, 
           output_options,
           Target_points=None,
           curvature=0, refraction=0, algorithm = 1): 
@@ -434,51 +502,36 @@ def Viewshed (Obs_points, Dem_raster,
 
     ###########################"
     #read data, check etc
-    out_files=[];rpt=[]
+    out_files=[]
+    rpt=[]
 
     # RasterPath= str(QgsMapLayerRegistry.instance().mapLayer(Raster_layer).dataProvider().dataSourceUri())
+    points = points_class.pt
 
+    # this is maximum radius in *pixel distance*
+    # should be explicit ( .max_radius(pixel=True) ) ...
+    radius_float = points_class.max_radius
+    radius_pix = int(radius_float)
 
-    points = Obs_points.pt
-
-    # this is maximum radius in pixel distance 
-    radius_float = Obs_points.max_radius
-    radius_pix = int(round(radius_float))
-    
-    Dem_raster.set_master_window(radius_pix)
+    #for speed and convenience, use maximum sized window for all analyses
+    #this is not clear! should set using entire size, not radius !!
+    raster_class.set_master_window(radius_pix)
     
     #pre_calculate distance matrix
 
     mx_dist = distance_matrix(radius_pix)
          
     if curvature:
+        #everything is in pixels here, so the earth diam
+        #has to be divided with pixel size!
         mx_curv = curvature_matrix(radius_pix,
-                               Dem_raster.get_diameter_earth(),
-                               refraction,
-                               Dem_raster.pix)
+                raster_class.get_diameter_earth(pixels=True),
+                               refraction)
        
+    else: mx_curv = 0
+    
+    mx_indices, mx_err_indices, mx_err, mx_mask = error_matrix(radius_pix, algorithm)
 
-    #initialize empty list
-    #network has to be already made !
-    if output_options == INTERVISIBILITY:
-        points2 = Target_points.pt
-        connection_list=[]
-    else:
-        #index matrix: not used for intervisibility, raster only
-        mx_indices, mx_err_indices, mx_err, mask = error_matrix(radius_pix, algorithm)
-
-
-        # TO BE REFINED
-        # masking is used to achieve  doughnut shaped output, or to filter azimuths  etc...
-        # >> masking function in raster class ?
-
-        # for speed : precalculate maximum mask - can be shrunk for lesser diameters ...
-        mask_circ = mx_dist [:] > radius_float
-        
-  
-    # ----------------- POINT LOOP -------------------------
-# DICTIONARY SHOULD BE SORTED BY RADIUS !!!
-# -------- TODO ----------------
     for id1 in points :
 
          # x,y, EMPTY_z, x_geog, y_geog = points[id1] #unpack all = RETURNS STRINGS ??
@@ -487,9 +540,9 @@ def Viewshed (Obs_points, Dem_raster,
         z= points[id1]["z"]; z_targ= points[id1]["z_targ"]
         
 
-        # radius_float is in pixels !!
-        r=  points[id1]["radius_float"]
-        r_pix= int (round(r))
+        # radius is in pixels !
+        r=  points[id1]["radius"]
+        r_pix= int (r)
 
         # all matrices are calculated for the maximum radius !!        
         
@@ -500,103 +553,83 @@ def Viewshed (Obs_points, Dem_raster,
 ##        else: np_slice = np.s_[:]
 ##        
         
-            
-        # this is to reduce unnecessary np query for each point
-        # everything else is made on maximum radius !
+        # background value for analysed matrix
+        # it gives observer value, as that point is never tested
 
+        # should not take too much time,
+        # compared to (faster) data [y, x] = init_val (test?)
+##        if output_options == BINARY_viewsghed: init_val = 1
+##        elif output_options == INVISIBILITY_DEPTH: init_val = z_targ
+##        else: init_val = 0
+
+        
         # this routine is also asigning offsets of data window - to the Raster class!
-        Dem_raster.open_window (x, y, r_pix)
+        raster_class.open_window (x, y, r_pix, initial_value = 0)
 
-        data=Dem_raster.window
+        data=raster_class.window
         
         z_abs = z + data [radius_pix,radius_pix]
         
         # level all according to observer
-        if curvature: data -= mx_curv + z_abs
-        else: data -= z_abs   
+        data -= mx_curv + z_abs
 
         data /= mx_dist #all one line = (data -z - mxcurv) /mx_dist
+            
+        if z_targ : mx_target = data + z_targ / mx_dist 
+                        # it's ( data + z_target ) / dist,
+                        # but / dist is already made above
+        else: mx_target=None
+        
+        # Horizon is the last visible zone beor the edge of the window
+        # need to remove data from corners (if a circular analysis is required !)
+        if output_options in [HORIZON, HORIZON_FULL]:
+            data [mx_dist >= r + 2] = np.min(data)
 
-                
-        if output_options == INTERVISIBILITY:
-            
-            #TODO : reading and passing stuff from points dictionary is unnecessary
-            # drawing lines could be done from the points class, here only two Ids and results
-          
-            if not "targets" in points[id1] : continue
-            
-            x_geog, y_geog= points[id1]["x_geog"] , points[id1]["y_geog"]
-                   
-            tests = intervisibility ( id1, points, points2, algorithm )
+               
+        matrix_vis = viewshed_raster (output_options,  data,
+                                      mx_err , mx_mask,
+                                      mx_indices, mx_err_indices,
+                                      target_matrix=mx_target,
+                                      distance_matrix=mx_dist,
+                                      interpolate = algorithm > 0 )
 
-            for t in tests:
-                id2, visib, hgt, dist = t
-            
-           # find correct coordinates of new points - needed for intervisibilty only...
+
+        if output_options in [HORIZON, HORIZON_FULL]:
+            #this is a hack...
+            #cannot solve the problem when the analysis window is larger
+            #than DEM extents - the outside values are
+            # forcing fake horizons on borders...
+
+            msk = np.ones(data.shape).astype(bool)
+            msk[raster_class.eroded]=False
+
+            matrix_vis[msk]=0
+
+        # ----------- MASKING ------------
+        # TODO : complex masking ......
+        mask_circ = mx_dist [:] > r
+        if output_options == INVISIBILITY_DEPTH:
+            matrix_vis[mask_circ]=np.nan
+        else: matrix_vis[mask_circ]=0 
+        
+        raster_class.add_result (matrix_vis)
+
+        # do writing here if there are multiple single files
+        if raster_class.mode == 0:
+            raster_class.write_result(dir_file=id1)
+
+
+        #TODO: make some kind of general report system !
+        # algo 0 is fast, so skip to save some time (??)
+        if algorithm > 0:
+
+            if output_options == INVISIBILITY_DEPTH:
+               c= np.count_nonzero(matrix_vis >= 0) 
+
+            else: c = np.count_nonzero(matrix_vis)
            
-                x2_geog, y2_geog=points2[id2]["x_geog"] , points2[id2]["y_geog"]
-  
-        
-              #  z2= points2[id2]["z_targ"]
-            
-                #append speed : not that critical
-                connection_list.append([id1, x_geog ,y_geog, id2, x2_geog, y2_geog,
-                                        visib, hgt, dist])
-                
-        
-        else: # VIEWSHED
-            
-            if z_targ > 0 : mx_target = data + z_targ / mx_dist 
-                            # it's ( data + z_target ) / dist,
-                            # but / dist is already made above
-            else: mx_target=None
-
-            
-            matrix_vis = viewshed_raster (output_options, data,
-                            mx_err , mask ,
-                            mx_indices , mx_err_indices,
-                             target_matrix=mx_target)
-
-            
-            
-
-
-
-            # SPEED ?? to test...
-            mask_circ = mx_dist [:] > r
-            matrix_vis[mask_circ]=0
-            
-            Dem_raster.add_result (matrix_vis)
-            
-#---------------------
-#            matrix_vis [mask_circ] = mask_fill
-
-
-##            if output_options [1] == "cumulative":
-##                #indices (slices) were assigned in the dem_window function
-##                matrix_final[Dem_raster.window_slice] += \
-##                        matrix_vis [Dem_raster.inside_window_slice]
-
-
-              
+            rpt.append([id1,c] )    
     
-        
-    #####################################
-##    #exiting the main points loop : write cumulative....
-##    if output_options [1]== "cumulative":
-##        success = write_raster (matrix_final, output+'_cumulative',gdal_raster.RasterXSize, gdal_raster.RasterYSize,
-##                                0, 0, gt, projection)
-##        if success : out_files.append(success)
-##        else: QMessageBox.information(None, "Error writing file !", str(output + '_cumulative cannot be saved'))
-##
-##    if output_options[0]=="Intervisibility":
-##        success = write_intervisibility_line (output, connection_list, Obs_points.crs)
-##        if success : out_files.append(success)
-##
-##        else : QMessageBox.information(None, "Error writing file !", str(output + '_intervisibility cannot be saved'))
-
-    
-    data = None; connections_list=None; 
 
     """
     #TESTING #################
@@ -611,9 +644,9 @@ def Viewshed (Obs_points, Dem_raster,
     ps.print_stats()
     # print s.getvalue()
     """
+    if raster_class.mode != 0: raster_class.write_result()
 
-# TODO : SUCCESS!!
-    return 1
+    return rpt
 
 ##    if output_options [1] == "cumulative" : return matrix_final
 ##    else: return matrix_vis

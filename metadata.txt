@@ -7,17 +7,19 @@
 # This file should be included when you package your plugin.# Mandatory items:
 
 [general]
-name=SenSpace
+name=Senspace
 qgisMinimumVersion=2.0
-description=Description to fill
+description="Senspace: sensible GIS"
 version=0.1
 author=Zoran Čučković
 email=N/A
 
-about=About section to fill....
+about=Senspace is a toolbox for modelling human perception of topography. For the moment, it features visibility analysis module. The plugin is being developed with help by Alexander Bruy.
 
-tracker=GITHUB BUG TRACKER
-repository=GITHUB REPO
+
+tracker=https://github.com/zoran-cuckovic/senspace/issues
+repository=https://github.com/zoran-cuckovic/senspace
+
 # End of mandatory metadata
 
 # Recommended items:

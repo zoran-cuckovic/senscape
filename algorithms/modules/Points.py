@@ -1,81 +1,87 @@
+# -*- coding: utf-8 -*-
+
 from PyQt4.QtCore import *
 from qgis.core import *
 import ogr, gdal
 import numpy as np
 
-import doViewshed
-# this is circular import !! cannot do import dem_chunk
+import Raster as rst
 
 
+"""
+Points class is creating a clean shapefile with analysis parameteres in
+the associated table. It is also taking care of geometries (filtering
+points outside raster, searching for neighbours in a specified radius etc.)
+The idea is to move all the mess of handling vector input and output
+in a single class.
+"""
 
 class Points:
-
-
-    # tu sve radnje!!!
-    #assembly etc
-    def __init__(self, shapefile, extent, pix_size, z_obs,radius ,
-                z_targ=None, 
-                spatial_index=None, field_ID = None,
-                field_zobs = None, field_ztarg=None, field_radius=None):
+    
+    def __init__(self, shapefile):
     #layer = qgis layer,  bounding_box = QgsRectangle,   field_id= string)
         self.pt={}
-        self.crs = None
-        self.max_radius = 0
-        self.pix = 0
 
+        self.layer = QgsVectorLayer(shapefile, 'o', 'ogr')
+
+        self.crs = self.layer.crs()
+
+        #make a test !
+        self.missing = []
+# ffff
+
+        fields = ["ID", "observ_hgt", "target_hgt", "radius"]
+        provider = self.layer.dataProvider()
+
+     
+        for f in fields:
+            if provider.fieldNameIndex(f)==-1:
+                self.missing.append(f)
         
-        x_min, y_max = extent[0], extent [3]
-
-        bounding_box = QgsRectangle(*extent) #* unpacks an argument list
-
-        pix= pix_size
-        self.pix=pix
-
-        radius_float = radius/pix
-        self.max_radius = radius_float
-
-        
-        layer = QgsVectorLayer(shapefile, 'o', 'ogr')
-
-        self.crs=layer.crs()
+        self.count = 0 # only take routine can determine the number of used points
         
 
-        # returns 0-? for indexes or -1 if doesn't exist
-        if bool( layer.fieldNameIndex ("ID") + 1):
-            ID_field = "ID"
-        else: ID_field = None
+    """
+    Take care of parameters. Leave geometries for other routine:
+    same points can be used with different rasters. 
 
+    """
 
-        if not spatial_index: #for intersect, not very helpful ...?
-            s_index = QgsSpatialIndex()
-            for f in layer.getFeatures():  s_index.insertFeature(f)
+    # multiple parameters (numeric + field name) enable to set a default
+    # in case there is a problem, eg z = float(None)
+    def clean_parameters(self, z_obs, radius ,
+                        z_targ=0, 
+                        field_ID = None,
+                        field_zobs = None,
+                        field_ztarg=None,
+                        field_radius=None):
+       
+
+        errors=[]
+       
+        
+        #feat = QgsFeature()
+        
+        #feature_iterator= layer.getFeatures() 
+        
+        #while feat_iterator.nextFeature(feat):
+
+        for feat in self.layer.getFeatures():
+
             
-        else: s_index = spatial_index
-
-        
-        feature_ids = s_index.intersects(bounding_box)
-
-        self.count= len(feature_ids)
-        
-        for fid in feature_ids:
-
-            # next = to get feature
-            # could be slow, but not critical... !?
-            feat = layer.getFeatures(QgsFeatureRequest().setFilterFid(fid)).next()           
-
+            
             geom = feat.geometry()
             t = geom.asPoint()
-            
-            id1 = feat[ID_field] if ID_field else feat.id() 
 
-            x_geog, y_geog = t[0], t[1]
+            x_geog, y_geog= t
 
-            z,zt,r = z_obs, z_targ, radius_float
-           
-            x = int((x_geog - x_min) / pix) # not float !
-            y = int((y_max - y_geog) / pix) #reversed !
-           
-           
+            z,zt,r = z_obs, z_targ, radius
+         
+
+            if field_ID: id1 = feat[field_ID]
+            else : id1 = feat.id()
+
+                     
             #addition for possible field values. Defaults are always loaded above
             if field_zobs :
                 try : z = float(feat[field_zobs])
@@ -87,66 +93,96 @@ class Points:
 
             if field_radius:
                 try :
-                    r = float(feat[field_radius]) / pix
+                    r = float(feat[field_radius]) 
                     if r > self.max_radius : self.max_radius = r
-                except: r=radius_float
+                except: r=radius
+
             
+            # test for duplicates
+            if id1 not in self.pt:
 
-            self.pt[id1]={"x_pix" : x, "y_pix":y,
-                      "z":z , "z_targ":zt, "radius_float" : r,
-                      "x_geog" :x_geog, "y_geog": y_geog}              
+                
+                              
+                self.pt[id1]={"z":z , "z_targ":zt, "radius" : r,
+                              "x_geog":x_geog, "y_geog" : y_geog }              
      
+            else: errors.append(id1)
 
-    
+
+        
+        return errors if errors else 0
+         
        # self.max_radius = max(x, key=lambda i: x[i])
 
-
-
-    def search_top_z (self, search_radius, raster_path):
-        """
-        Find the highest point in a perimeter around each observer point.
-        Probably a better option is to make a separate loop/function for all points
-        before making viewsheds...
+    """
         
-        TO BE REMOVED TO A SEPARATE SCRIPT : this is not a good practice (we do not know the
-        position of observer points !)
-        """
-        gdal_raster = gdal.Open(raster_path)
+    Find the highest point in a perimeter around each observer point.
+    Note that it always moves the point to the center of the highest pixel
 
+    This is duplicating functions from take_points (selection inside a frame)!
+    to reorganise !! (should be independent function, could be useful elsewhere...)
+       
+    """
+    def move_top(self,  raster_path, search_radius):
 
-##        raster_y_size = gdal_raster.RasterYSize
-##        raster_x_size = gdal_raster.RasterXSize
+  
+        r = rst.Raster(raster_path)
+        pix = r.pix; half_pix = pix/2
 
-        pix =self.pix
+        raster_x_min, raster_y_min, raster_x_max,raster_y_max = r.extent
+                
+        radius_pix = int(search_radius/pix)
+
+        win_size = radius_pix * 2 + 1
+
+        r.set_master_window(radius_pix)
+        
+        
     #raster_y_min = raster_y_max - raster_y_size * pix
     #raster_x_max = raster_x_min + raster_x_size * pix
 
         for key in self.pt:
+
                      
-            pt_x, pt_y = self.pt[key]["x_pix"], self.pt[key]["y_pix"]
+            x, y = self.pt[key]["x_geog"], self.pt[key]["y_geog"]
+
+            #how to use Qgs functions?
+            # ext = QgsRectangle(*extents)
+            #pt = QgsPoint(x,y)
+            # pt in ext ???
+
+          
+            if not raster_x_min < x < raster_x_max \
+            or not raster_y_min < y < raster_y_max: continue
+
+
+            # make a function for pixel coords !!!
+            x_pix= int((x - raster_x_min) / pix)
+            y_pix = int((raster_y_max - y) / pix) #reversed !
+
+            r.open_window(x_pix, y_pix, radius_pix, initial_value=r.min)
 
             #chunks are padded to be square (for viewsheds)
-            # so initialise borders to some impossible value ... should work ?
-
-            dem, cropping = doViewshed.dem_chunk(pt_x, pt_y, search_radius,
-                                                  gdal_raster, square = False)
-
-            off_x, off_y = cropping[0:2]
-            #we are interested only in offsets from the beginning
-            #local_x = search_radius - local_off_x
-            #local_y = search_radius - local_off_y
-
-            m = np.argmax(dem); iy, ix=np.unravel_index(m, dem.shape)
-
-            x2 , y2 = ix + off_x, iy + off_y
-
-            self.pt[key]["x_pix"]= x2
-            self.pt[key]["y_pix"]= y2
-
-            # only nedded for intervisibility !!
+            # x, y is always in the centre
             
-            self.pt[key]["x_geog"] += (x2 - pt_x)  * pix
-            self.pt[key]["y_geog"] += (y2 - pt_y)  * pix
+            iy, ix=np.unravel_index( np.argmax(r.window),
+                                     r.window.shape )
+        
+            # unravel is giving offsets inside the window,
+            # we need to place it inside the entire raster
+            x_off , y_off, win_x, win_y = r.gdal_slice
+            # when the point is close to border, take into account window overlap!
+            x_off -= win_size - win_x; y_off -= win_size - win_y
+
+            self.pt[key]["x_geog"] = (ix + x_off) * pix + raster_x_min + half_pix
+            self.pt[key]["y_geog"] = raster_y_max - (iy + y_off) * pix  - half_pix
+
+#           
+##            if iy != radius_pix or ix != radius_pix:
+##        
+##                self.pt[key]["x_geog"] += (ix - x_pix)  * pix
+##                self.pt[key]["y_geog"] += (iy - y_pix)  * pix
+        
 
     """
                 
@@ -171,20 +207,55 @@ class Points:
     """
 
     
-    """ could be done much faster with numpy ..."""
-    def point_network (self ,target_points, radius):
+    """ much faster with numpy ...
 
-        radius_float = radius / self.pix
+    if not 0 <= x < raster_x_size or not 0 <= y < raster_y_size : continue
+       
+       #cropping from the front
+    if x <= radius_pix:   x_offset =0
+       #cropping from the back
+    else:      x_offset = x - radius_pix         
+      
+    if y <= radius_pix:  y_offset =0
+    else:   y_offset = y - radius_pix
 
-        radius_pix= int(radius_float)
-        
-        d= radius_float **2
+    x_offset2 = min(x + radius_pix +1, raster_x_size) #could be enormus radius, so check both ends always
+    y_offset2 = min(y + radius_pix + 1, raster_y_size )
+    
+    window_size_y = y_offset2 - y_offset
+    window_size_x = x_offset2 - x_offset
+
+    mx = r.ReadAsArray(x_offset, y_offset, window_size_x, window_size_y).astype(float)
+    m = np.argmax(mx)
+
+    iy, ix=np.unravel_index(m, mx.shape)
+    
+    #0.5 is to move to the center of corresp. pixel
+    x2_g = ( ix +0.5 + x_offset) * pix  + raster_x_min 
+    
+    y2_g = raster_y_max - (y_offset + iy + 0.5) * pix  
+
+    g= QgsGeometry.fromPoint(QgsPoint( x2_g, y2_g))
+    
+    inputLayer.dataProvider().changeGeometryValues({ pt_id : g })
+
+    """
+    """
+    Assign targets for each observer point. Targets are a class instance
+    Used after take which selects good points
+    """
+    def network (self,targets):
+
+        self.edges={}
 
         for pt1 in self.pt: 
 
-          
+                      
             x = self.pt[pt1]["x_pix"]
             y = self.pt[pt1]["y_pix"]
+            r = self.pt[pt1]["radius"] #it's pixelised after take !!
+
+            radius_pix= int(r)
             max_x = x + radius_pix; min_x = x - radius_pix
             max_y = y + radius_pix; min_y = y - radius_pix
             #does not need cropping if target points match raster extent
@@ -199,16 +270,190 @@ class Points:
 ##                    try: tg_offset = float(feat2[z_target_field])
 ##                    except: pass
             
-            for pt2 in target_points.pt:
-                x2 = target_points.pt[pt2]["x_pix"]
-                y2 = target_points.pt[pt2]["y_pix"]
+            for pt2 in targets.pt:
+                x2 = targets.pt[pt2]["x_pix"]
+                y2 = targets.pt[pt2]["y_pix"]
 
                 #skipping 1
                 if x2==x and y2==y : continue
                 
                 if min_x <= x2 <= max_x and min_y <= y2 <= max_y:
-                    if  (x-x2)**2 + (y-y2)**2 <= d:
+                    if  (x-x2)**2 + (y-y2)**2 <= r**2:
+                          # this is inefficient for looping
+                          # need to open a window for each edge...
+##                        self.edges[id1,id2]={}
                         try: self.pt[pt1]["targets"].append(pt2)
                         except: self.pt[pt1]["targets"]=[pt2]
+
+
+    """
+    Returns a dict of points, prepared for visibilty analysis
+    All values are expressed in pixel offsets.
+
+    This must work on a freshly loaded shapefile,
+    where points.missing is [] !!
+    [_or make a new function to test shapefiles_]
+   
+    """
+    def take (self, extent, pix_size, spatial_index=None):
+        
+        max_r = 0
+
+        x_min, y_max = extent[0], extent [3]
+
+        bounding_box = QgsRectangle(*extent) #* unpacks an argument list
+
         
 
+        if not spatial_index: #for intersect, not very helpful ...?
+            s_index = QgsSpatialIndex()
+            for f in self.layer.getFeatures():  s_index.insertFeature(f)
+            
+        else: s_index = spatial_index
+
+        feature_ids = s_index.intersects(bounding_box)
+
+        for fid in feature_ids:
+            feat = self.layer.getFeatures(
+                   QgsFeatureRequest().setFilterFid(fid)).next()
+
+            geom = feat.geometry()
+            t = geom.asPoint()
+
+            x_geog, y_geog= t
+            
+            x = int((x_geog - x_min) / pix_size) # not float !
+            y = int((y_max - y_geog) / pix_size) #reversed !
+
+            r = feat["radius"] / pix_size
+
+            if r > max_r : max_r = r
+            
+            self.pt[ feat["ID"] ]={"z" : feat["observ_hgt"] ,
+                                    "z_targ": feat["target_hgt"],
+                                    "radius" : r,
+                                    "x_pix" : x, "y_pix":y,
+                                    "x_geog" :x_geog, "y_geog": y_geog}       
+
+        
+        self.count = len(feature_ids)
+        self.max_radius = max_r
+
+
+                        
+    def write_points (self, file_name, coordinate_ref_system, use_pix_coords=False):
+
+        from processing.tools.vector import VectorWriter
+
+        #QMessageBox.information(None, "Timing report:", str(data_list))
+        fields = QgsFields()
+        fields.append ( QgsField("ID", QVariant.String, 'string',50))
+        fields.append (QgsField("observ_hgt", QVariant.Double,'double', 5,4 ))
+        fields.append (QgsField("target_hgt", QVariant.Double,'double', 5,4 ))
+        fields.append ( QgsField("radius", QVariant.Double, 'double',10,3))
+
+        
+
+       # writer = QgsVectorFileWriter( file_name + ".shp", "CP1250", fields,
+       #                               QGis.WKBPoint, coordinate_ref_system, "ESRI Shapefile")
+
+      
+        writer = VectorWriter(file_name, None, fields, QGis.WKBPoint,
+                              coordinate_ref_system)
+        
+                                                #CP... = encoding
+##        if writer.hasError() != QgsVectorFileWriter.NoError:
+##            QMessageBox.information(None, "ERROR!", "Cannot write points file (?)")
+##            return 0
+        
+        for r in self.pt :
+
+           
+            # create a new feature
+            feat = QgsFeature()
+            
+            feat.setGeometry(QgsGeometry.fromPoint(
+                QgsPoint(float(self.pt[r]["x_geog"]),
+                         float(self.pt[r]["y_geog"] )) ))
+
+      
+            feat.setFields(fields)
+
+            feat['ID'] = r
+            feat ['observ_hgt']=self.pt[r]["z"]
+            feat ['target_hgt']=self.pt[r]["z_targ"]
+            feat ['radius']=self.pt[r]["radius"]
+            
+            writer.addFeature(feat)
+
+        del writer
+
+        
+       
+        #return file_name + ".shp"
+
+
+
+    def write_network (self, file_name, edges, target_class,
+                   coordinate_ref_system=None , use_pix_coords=False):
+
+        from processing.tools.vector import VectorWriter
+
+        #QMessageBox.information(None, "Timing report:", str(data_list))
+        fields = QgsFields()
+        fields.append ( QgsField("Source", QVariant.String, 'string',50))
+        fields.append ( QgsField("Target", QVariant.String, 'string',50))
+       # fields.append (QgsField("Visible", QVariant.Boolean ))
+        fields.append(QgsField("Visible", QVariant.String, 'string',5))
+        fields.append (QgsField("observ_hgt", QVariant.Double,'double', 5,4 ))
+        fields.append (QgsField("target_hgt", QVariant.Double,'double', 5,4 ))
+        
+
+        
+
+       # writer = QgsVectorFileWriter( file_name + ".shp", "CP1250", fields,
+       #                               QGis.WKBPoint, coordinate_ref_system, "ESRI Shapefile")
+        
+        tg= target_class
+
+        crs = coordinate_ref_system if coordinate_ref_system else self.crs
+        
+        writer = VectorWriter(file_name, None, fields, QGis.WKBLineString,crs)
+        
+                                                #CP... = encoding
+##        if writer.hasError() != QgsVectorFileWriter.NoError:
+##            QMessageBox.information(None, "ERROR!", "Cannot write points file (?)")
+##            return 0
+        
+        for r in self.pt :
+
+            if "targets" not in self.pt[r]: continue
+           
+            # create a new feature
+            feat = QgsFeature()
+
+            p1 = QgsPoint(float(self.pt[r]["x_geog"]),
+                         float(self.pt[r]["y_geog"] ))
+
+            for t in self.pt[r]["targets"]:
+
+                p2 = QgsPoint(float(tg.pt[t]["x_geog"]),
+                         float(tg.pt[t]["y_geog"] ))
+            
+    
+                feat.setGeometry(QgsGeometry.fromPolyline([p1, p2]))
+          
+                feat.setFields(fields)
+
+                feat['Source'] = r
+                feat['Target'] = t
+                feat['Visible'] = 'True' if edges[r,t] >= 0 else 'False'
+                feat ['observ_hgt']=self.pt[r]["z"]
+                feat ['target_hgt']=float(edges[r,t]) #why doesn't it accept Python numbers ??        
+                
+                writer.addFeature(feat)
+
+        del writer
+        
+
+    

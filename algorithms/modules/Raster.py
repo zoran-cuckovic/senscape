@@ -3,6 +3,8 @@ from qgis.core import *
 import gdal
 import numpy as np
 
+from os import path
+
 #import doViewshed
 # this is circular import !! cannot do import dem_chunk
 
@@ -13,14 +15,15 @@ MIN = 2
 MAX = 3
 # ------------------------------------------
 
-'''
+"""
 This class handles input and output of raster data.
-'''
+It doesn't do any calculations besides combining analysed patches. 
+"""
 
 class Raster:
 
     
-    def __init__(self, raster, crs=None):
+    def __init__(self, raster, output=None, crs=None):
 	
 		
         gdal_raster=gdal.Open(raster)
@@ -59,19 +62,28 @@ class Raster:
         self.extent = [raster_x_min, raster_y_min, 
                        raster_x_max, raster_y_max]
 
+        self.min, self.max = gdal_raster.GetRasterBand(1).GetStatistics(True, True)[:2]
+
+        #save output path here, to avoid passing as argument.
+        #the idea is to avoid handling outputs from the doViewshed module
+        #(besides commanding dem.write_result(), without passing the path)
+        #hacky ??
+        self.output = output
+
 
     """
     Determine the method for combining results (summing up or otherwise).
     By default, the mode is 0: no summing up
+    
     Buffer size (self.result) is the same size as the entire array
     [ should be done in chunks for very large arrays - to implement ...]
     """
 
-    def set_buffer_mode(self, mode):
+    def set_buffer(self, mode, fill_nan=False):
 
         self.mode = mode
         self.result = np.zeros(self.size)
-
+        if fill_nan : self.result [:] = np.nan
         
         
 
@@ -89,8 +101,12 @@ class Raster:
         full_size = radius_pix *2 +1
         self.window = np.zeros((full_size, full_size))
 
-      
-    def get_diameter_earth (self):
+    """
+    Name is self-explanatory... Divide with pixel size if needed.
+    Diameter is expressed as half of the major axis plus half of the minor:
+    this should work best for moderate latitudes.
+    """
+    def get_diameter_earth (self, pixels=False):
 
         crs= self.crs		
     
@@ -114,11 +130,13 @@ class Raster:
 
         semiMinor = semiMajor - semiMajor / flattening
         
-        return semiMajor + semiMinor
+        diam = semiMajor + semiMinor 
+        
+        return diam/self.pix if pixels else diam
 
  
     """
-    TODO : emit a warning ?!
+    TODO ....
     """
     def set_mask (self, mask):
 
@@ -133,7 +151,7 @@ class Raster:
     Upon opening a window, all parameters regarding its size and position are
     registered in the Raster class instance - and reused for writing results
     """
-    def open_window (self, x, y, radius_pix):
+    def open_window (self, x, y, radius_pix, initial_value =0):
 
         rx = radius_pix
         #to place smaller windows inside the master window
@@ -175,10 +193,19 @@ class Raster:
 
  
         
-        self.window [:]=0 # as a precaution, not needed ??
+        self.window [:]=initial_value 
 
         self.window[ self.inside_window_slice] = \
                          self.rst.ReadAsArray(*self.gdal_slice ).astype(float)
+
+        self.window_center = rx #not used !
+        
+        # I do not know how to read from np.slice object so ....
+        # This is a hack for the problem of horizon analysis,
+        # there is always a break on the edge of the elevation model.
+        # (especially difficult when the analysis window is protruding outside)
+        self.eroded=np.s_[y_offset_dist_mx + 1 : y_offset_dist_mx + window_size_y -1,
+                    x_offset_dist_mx + 1: x_offset_dist_mx + window_size_x  -1]
 
 
 ##        self.offset = (x_offset, y_offset)
@@ -186,25 +213,37 @@ class Raster:
 ##        self.win_size = (window_size_x, window_size_y)
 
 
-
-
+    """
+    Insert a numpy matrix to the same place where data has been extracted.
+    Data can be added-up, or chosen from highest/lowest values.
+    All parameteres are copied from class properties
+    because only one window is possible at a time.
+    """
     def add_result(self, in_array):
 
-        if self.mode == 0: self.result = in_array
-
-        elif self.mode == 1:
-            
-            self.result [self.window_slice] += in_array [self.inside_window_slice]
-            
-
-
-        elif self.mode == 2:
-            np.where(self.result [self.window_slice] < in_array [self.inside_window_slice],
-                     in_array [self.inside_window_slice], self.result [self.window_slice])
-
-        elif self.mode == 3:
-            print  '-------- TODO ! ---------'
+        m = self.result [self.window_slice]
+        m_in = in_array [self.inside_window_slice]
         
+        # there is no buffer here, so no need to place properly
+        if self.mode <= 0: m = m_in
+
+        elif self.mode == 1: m += m_in
+            
+        else:
+            if self.mode == 2: operator = np.greater
+            elif self.mode == 3: operator = np.less
+            
+            mask = operator( m_in, m)
+            #there is a problem to initialise a comparison without knowing min/max values
+            # nan will always give False in any comarison
+            # so make a trick with isnan()...
+            mask[np.isnan(m)]= True
+
+            m[mask]= m_in[mask]
+            
+            
+            #np.where(self.result [self.window_slice] < in_array [self.inside_window_slice],
+            #         in_array [self.inside_window_slice], self.result [self.window_slice])      
             
 
     """
@@ -212,13 +251,22 @@ class Raster:
     e.g. read a window from a gdal raster, sum, write back
        
     """
-    def write_result(self, filePath,
+    def write_result(self, dir_file = None,
                      fill = np.nan, no_data = np.nan,
                      dataFormat = gdal.GDT_Float32):
+
+
+
+        file_name = self.output
+
+        if dir_file: #file inside a directory
+            file_name = path.join(self.output, dir_file + ".tif" )
+
+        print file_name
         
-            
+
         driver = gdal.GetDriverByName('GTiff')
-        ds = driver.Create(filePath, self.size[1], self.size[0], 1, dataFormat)
+        ds = driver.Create(file_name, self.size[1], self.size[0], 1, dataFormat)
         ds.SetProjection(self.crs)
         ds.SetGeoTransform(self.rst.GetGeoTransform())
 
@@ -234,10 +282,10 @@ class Raster:
         #all modes > 0 operate on a copy of the raster
         if self.mode:
             
-            ds.GetRasterBand(1).WriteArray(self.result)
+            ds.GetRasterBand(1).WriteArray(self.result )
         else:
             #for writing it takes only x and y offset (1st 2 values of self.gdal_slice) 
-            ds.GetRasterBand(1).WriteArray(self.result[ self.inside_window_slice ],
+            ds.GetRasterBand(1).WriteArray(self.result [ self.inside_window_slice ],
                                            *self.gdal_slice[:2] )
             #self.offset[0], self.offset[1])
         ds = None
