@@ -1,4 +1,4 @@
-#Senspace
+# Senspace
 
 Senspace is a toolbox for modelling human perception of topography for QGIS, based on [QGIS viewshed module](https://github.com/zoran-cuckovic/QGIS-visibility-analysis). It is a subclass of QGIS processing framework and can be readily used in custom models or scripts.
 
@@ -8,7 +8,7 @@ To install: see manual instalation of [QGIS viewshed module](https://github.com/
 
 The plugin is being developed with help by Alexander Bruy. 
 
-##Instructions
+## Instructions
 
 The analysis is made in two steps:
 - 1 Vector layer containing observer points is first cleaned and prepared using "Create viewpoints" module
