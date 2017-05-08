@@ -13,6 +13,7 @@ from processing.core.parameters import (ParameterVector,
                                         ParameterTableField)
 from processing.core.outputs import OutputRaster, OutputDirectory
 from processing.tools import dataobjects
+from processing.core.ProcessingLog import ProcessingLog
 
 from .modules import doViewshed as ws
 from .modules import Points as pts
@@ -150,8 +151,9 @@ class Viewshed(GeoAlgorithm):
         points = pts.Points(observers)#
         #normally  .missing is an (empty) list
         if  points.missing :
-            QMessageBox.information(None, "Missing fields!",
-                                      str(points.missing))
+            
+            QMessageBox.information(None, "ERROR!",
+            "Missing fields! \n" + "\n".join(points.missing))
             return
 
         points.take(dem.extent, dem.pix)
@@ -181,10 +183,14 @@ class Viewshed(GeoAlgorithm):
                                 refraction=refraction,
                                 algorithm = 1)
 
-        QMessageBox.information(None, "Report",
-                                "ID : visible pixels \n" +
-                                " This is just an idea : should be in the log! \n"
-                                + str(report))
+        txt = "Analysed points \n ID : visible pixels" 
+        
+        for l in report:
+            txt = txt + "\n" + ' , '.join(str(x) for x in l)
+            
+        ProcessingLog.addToLog ('INFO', txt) 
+
+        
 
         """
         Is this a good practice? dem object has been modified in ws.Viewshed routine.

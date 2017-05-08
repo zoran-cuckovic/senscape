@@ -82,7 +82,8 @@ class Points:
             else : id1 = feat.id()
 
                      
-            #addition for possible field values. Defaults are always loaded above
+            #addition for possible field values.
+            #override with fixed parameters in case of problem 
             if field_zobs :
                 try : z = float(feat[field_zobs])
                 except: z=z_obs
@@ -92,9 +93,7 @@ class Points:
                 except: zt=z_targ
 
             if field_radius:
-                try :
-                    r = float(feat[field_radius]) 
-                    if r > self.max_radius : self.max_radius = r
+                try : r = float(feat[field_radius]) 
                 except: r=radius
 
             
@@ -297,13 +296,11 @@ class Points:
     """
     def take (self, extent, pix_size, spatial_index=None):
         
-        max_r = 0
+        self.max_radius = 0
 
         x_min, y_max = extent[0], extent [3]
 
-        bounding_box = QgsRectangle(*extent) #* unpacks an argument list
-
-        
+        bounding_box = QgsRectangle(*extent) #* unpacks an argument list     
 
         if not spatial_index: #for intersect, not very helpful ...?
             s_index = QgsSpatialIndex()
@@ -327,7 +324,7 @@ class Points:
 
             r = feat["radius"] / pix_size
 
-            if r > max_r : max_r = r
+            if r > self.max_radius : self.max_radius = r
             
             self.pt[ feat["ID"] ]={"z" : feat["observ_hgt"] ,
                                     "z_targ": feat["target_hgt"],
@@ -337,7 +334,7 @@ class Points:
 
         
         self.count = len(feature_ids)
-        self.max_radius = max_r
+        
 
 
                         

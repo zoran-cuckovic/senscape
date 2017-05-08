@@ -4,8 +4,7 @@
 # embedding metadata in __init__.py will 
 # is no longer supported since version 2.0.
 
-# This file should be included when you package your plugin.
-# Mandatory items:
+# This file should be included when you package your plugin.# Mandatory items:
 
 [general]
 name=Senspace
@@ -34,6 +33,8 @@ tags=landscape, processing, raster, topography, dem
 homepage=N/A
 category=Analysis
 icon=icon.png
+#icon souce : http://etc.usf.edu/clipart/galleries/972-decorative-letters-s
+
 # experimental flag
 experimental=True
 

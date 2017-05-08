@@ -19,14 +19,13 @@ email : /
 ***************************************************************************/
 """
 
-
-
 from __future__ import division
 
 """
 BUGS
 - interpolation outside data window (on borders) : copy border values
-
+- add proper titles to produced layers !
+- finding highest position : should be circular
 """
 
 from PyQt4.QtCore import *
@@ -91,9 +90,7 @@ def curvature_matrix(radius_pix, diameter_earth_pixels, refraction):
     # all distances are in pixels in doViewshed module !!
     #pixel_diameter = diameter_earth / pixel_size
         
-    return (dist_squared / diameter_earth_pixels) * 1 - refraction
-    
-    
+    return (dist_squared / diameter_earth_pixels) * 1 - refraction 
 
 def error_matrix(radius, size_factor=1):
 
@@ -103,7 +100,6 @@ def error_matrix(radius, size_factor=1):
     Only 1/8th of full radius is enough : the rest can be copied/mirrored. 
     """
 
-    
     if size_factor == 0: size_factor = 1 #0 is for non-interpolated algo...
     radius_large = radius  * size_factor  
                                                 
@@ -595,13 +591,17 @@ def Viewshed (points_class, raster_class,
 
 
         if output_options in [HORIZON, HORIZON_FULL]:
-            #this is a hack...
+
+            #crop borders 
             #cannot solve the problem when the analysis window is larger
             #than DEM extents - the outside values are
             # forcing fake horizons on borders...
 
             msk = np.ones(data.shape).astype(bool)
-            msk[raster_class.eroded]=False
+        
+            s_y, s_x = raster_class.inside_window_slice
+                        
+            msk[s_y[0] +1 : s_y[1] -1, s_x[0] +1 : s_x[1] -1]= False
 
             matrix_vis[msk]=0
 

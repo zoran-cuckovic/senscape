@@ -184,28 +184,24 @@ class Raster:
 
         self.window_slice = np.s_[y_offset : y_offset + window_size_y,
                                   x_offset : x_offset + window_size_x ]
+        
+        in_slice_y = (y_offset_dist_mx, y_offset_dist_mx +  window_size_y)
+        in_slice_x = (x_offset_dist_mx , x_offset_dist_mx + window_size_x)
 
-
-        self.inside_window_slice = np.s_[ y_offset_dist_mx : y_offset_dist_mx +  window_size_y,
-                                          x_offset_dist_mx : x_offset_dist_mx + window_size_x]
+        self.inside_window_slice = [in_slice_y, in_slice_x]
 
         self.gdal_slice = [x_offset, y_offset, window_size_x, window_size_y]
 
  
         
         self.window [:]=initial_value 
-
-        self.window[ self.inside_window_slice] = \
+        # * is important to upack values properly
+        self.window[ slice(*in_slice_y), slice(*in_slice_x)] = \
                          self.rst.ReadAsArray(*self.gdal_slice ).astype(float)
 
-        self.window_center = rx #not used !
+        #self.window_center = rx #not used !
         
-        # I do not know how to read from np.slice object so ....
-        # This is a hack for the problem of horizon analysis,
-        # there is always a break on the edge of the elevation model.
-        # (especially difficult when the analysis window is protruding outside)
-        self.eroded=np.s_[y_offset_dist_mx + 1 : y_offset_dist_mx + window_size_y -1,
-                    x_offset_dist_mx + 1: x_offset_dist_mx + window_size_x  -1]
+       
 
 
 ##        self.offset = (x_offset, y_offset)
@@ -221,8 +217,11 @@ class Raster:
     """
     def add_result(self, in_array):
 
+        y_in = slice(*self.inside_window_slice[0])
+        x_in = slice(*self.inside_window_slice[1])
+
         m = self.result [self.window_slice]
-        m_in = in_array [self.inside_window_slice]
+        m_in = in_array [y_in, x_in]
         
         # there is no buffer here, so no need to place properly
         if self.mode <= 0: m = m_in
@@ -262,9 +261,6 @@ class Raster:
         if dir_file: #file inside a directory
             file_name = path.join(self.output, dir_file + ".tif" )
 
-        print file_name
-        
-
         driver = gdal.GetDriverByName('GTiff')
         ds = driver.Create(file_name, self.size[1], self.size[0], 1, dataFormat)
         ds.SetProjection(self.crs)
@@ -284,8 +280,10 @@ class Raster:
             
             ds.GetRasterBand(1).WriteArray(self.result )
         else:
-            #for writing it takes only x and y offset (1st 2 values of self.gdal_slice) 
-            ds.GetRasterBand(1).WriteArray(self.result [ self.inside_window_slice ],
+            y_in = slice(*self.inside_window_slice[0])
+            x_in = slice(*self.inside_window_slice[1])
+            #for writing gdal takes only x and y offset (1st 2 values of self.gdal_slice) 
+            ds.GetRasterBand(1).WriteArray(self.result [ y_in, x_in ],
                                            *self.gdal_slice[:2] )
             #self.offset[0], self.offset[1])
         ds = None

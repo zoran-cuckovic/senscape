@@ -44,6 +44,11 @@ from .algorithms.viewshed_intervisibility import  Intervisibility
 #from .algorithms.networks_vector import NetworkVector
 
 
+
+from PyQt4.QtGui import QIcon
+from os import path
+
+
 class SenspaceProvider(AlgorithmProvider):
 
     MY_DUMMY_SETTING = 'MY_DUMMY_SETTING'
@@ -100,9 +105,16 @@ class SenspaceProvider(AlgorithmProvider):
         return 'Senspace'
 
     def getIcon(self):
+
         """We return the default icon.
-        """
-        return AlgorithmProvider.getIcon(self)
+        
+	"""       
+        return QIcon(path.dirname(__file__) + '/icon.png')
+
+        #return AlgorithmProvider.getIcon(self)
+        
+        
+     
 
     def _loadAlgorithms(self):
         """Here we fill the list of algorithms in self.algs.

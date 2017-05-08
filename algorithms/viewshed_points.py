@@ -205,7 +205,6 @@ class ViewshedPoints(GeoAlgorithm):
         
         points = pts.Points(Points_path) # and all other stuff ....
 
-        print 5555
         success = points.clean_parameters( observer_height, radius,
                            z_targ = target ,
                            field_ID = observer_id,
