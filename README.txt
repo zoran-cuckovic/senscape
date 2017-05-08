@@ -1,27 +1,16 @@
-Plugin Builder Results
+#Senspace
 
-Your plugin Senspace was created in:
-    U:\Users\zcuckovi\.qgis2\python\plugins\Senspace
+Senspace is a toolbox for modelling human perception of topography for QGIS, based on [QGIS viewshed module](https://github.com/zoran-cuckovic/QGIS-visibility-analysis). It is a subclass of QGIS processing framework and can be readily used in custom models or scripts.
 
-Your QGIS plugin directory is located at:
-    U:/Users/zcuckovi/.qgis2/python/plugins
+The plugin is in experimental phase.
 
-What's Next:
+To install: see manual instalation of [QGIS viewshed module](https://github.com/zoran-cuckovic/QGIS-visibility-analysis). It should be placed in a folder named "Senspace", and enabled under QGIS processing options (besides being enabled as a plugin in QGIS plugin manager).
 
-  * Copy the entire directory containing your new plugin to the QGIS plugin
-    directory
+The plugin is being developed with help by Alexander Bruy. 
 
-  * Run the tests (``make test``)
+##Instructions
 
-  * Test the plugin by enabling it in the QGIS plugin manager
-
-  * Customize it by editing the implementation file: ``senspace.py``
-
-  * You can use the Makefile to compile your Ui and resource files when
-    you make changes. This requires GNU make (gmake)
-
-For more information, see the PyQGIS Developer Cookbook at:
-http://www.qgis.org/pyqgis-cookbook/index.html
-
-(C) 2011-2014 GeoApt LLC - geoapt.com
-Git revision : $Format:%H$
+The analysis is made in two steps:
+- 1 Vector layer containing observer points is first cleaned and prepared using "Create viewpoints" module
+- 2 Viewshed analysis is made with the "Viewshed" module, using the created points
+- 2b For intervisibility analysis additional target points need to be created using the same module as in 1. Target height is specified in the corresponding text-box or by choosing a table field. 

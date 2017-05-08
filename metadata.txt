@@ -4,12 +4,13 @@
 # embedding metadata in __init__.py will 
 # is no longer supported since version 2.0.
 
-# This file should be included when you package your plugin.# Mandatory items:
+# This file should be included when you package your plugin.
+# Mandatory items:
 
 [general]
 name=Senspace
 qgisMinimumVersion=2.0
-description="Senspace: sensible GIS"
+description=Senspace: sensible GIS
 version=0.1
 author=Zoran Čučković
 email=N/A
@@ -30,7 +31,7 @@ repository=https://github.com/zoran-cuckovic/senspace
 # Tags are comma separated with spaces allowed
 tags=landscape, processing, raster, topography, dem
 
-homepage=SOME HOMEPAGE
+homepage=N/A
 category=Analysis
 icon=icon.png
 # experimental flag
