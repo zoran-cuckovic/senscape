@@ -13,4 +13,4 @@ The plugin is being developed with help by Alexander Bruy.
 The analysis is made in two steps:
 - 1 Vector layer containing observer points is first cleaned and prepared using "Create viewpoints" module
 - 2 Viewshed analysis is made with the "Viewshed" module, using the created points
-- 2b For intervisibility analysis additional target points need to be created using the same module as in 1. Target height is specified in the corresponding text-box or by choosing a table field. 
+- 2b For intervisibility analysis additional target points need to be created using the same module as in (1). Target height is specified in the corresponding text-box or by choosing a table field. 
