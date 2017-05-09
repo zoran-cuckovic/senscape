@@ -159,21 +159,25 @@ class Viewshed(GeoAlgorithm):
         points.take(dem.extent, dem.pix)
 
 
-        if points.count == 0: pass # RAISE ERROR!
+        if points.count == 0:
+            QMessageBox.information(None, "ERROR!",
+            "No viewpoints in the chosen area.")
+            return
 
         #special case: singe file
         elif points.count == 1: operator = -1
+            
 
-        else:
-            dem.set_buffer(operator,
+        else: 
+            if operator > 0: dem.set_buffer(operator,
                            fill_nan = True if operator > 1
                                             else False) #default is 0
 
         # to avoid passing this argument to doViewshed, register as property
         # the idea is to clean doViewshed from handling raster input/output (??)
-        # (normally output path is passed upon creation of the class)
+        
         if operator == 0:
-            dem.output = output_dir
+            dem.directory = output_dir
 
 	#will assign the result to dem class (?)	
         report =  ws.Viewshed (points, dem, 
@@ -183,7 +187,7 @@ class Viewshed(GeoAlgorithm):
                                 refraction=refraction,
                                 algorithm = 1)
 
-        txt = "Analysed points \n ID : visible pixels" 
+        txt = "Analysed points \n ID : visible pixels : total area" 
         
         for l in report:
             txt = txt + "\n" + ' , '.join(str(x) for x in l)

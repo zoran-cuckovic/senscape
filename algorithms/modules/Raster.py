@@ -5,10 +5,7 @@ import numpy as np
 
 from os import path
 
-#import doViewshed
-# this is circular import !! cannot do import dem_chunk
-
-#modes to combine outputs TO IMPLEMENT !!!!!!!!!!!!!!!!!!!!!!!!
+ONE_FILE= -1
 SINGLE = 0
 ADD = 1
 MIN = 2
@@ -23,7 +20,7 @@ It doesn't do any calculations besides combining analysed patches.
 class Raster:
 
     
-    def __init__(self, raster, output=None, crs=None):
+    def __init__(self, raster, output=None, crs=None, directory=None):
 	
 		
         gdal_raster=gdal.Open(raster)
@@ -69,6 +66,7 @@ class Raster:
         #(besides commanding dem.write_result(), without passing the path)
         #hacky ??
         self.output = output
+        self.directory = directory
 
 
     """
@@ -151,7 +149,7 @@ class Raster:
     Upon opening a window, all parameters regarding its size and position are
     registered in the Raster class instance - and reused for writing results
     """
-    def open_window (self, x, y, radius_pix, initial_value =0):
+    def open_window (self, x, y, radius_pix, initial_value =0, pad = False):
 
         rx = radius_pix
         #to place smaller windows inside the master window
@@ -199,7 +197,22 @@ class Raster:
         self.window[ slice(*in_slice_y), slice(*in_slice_x)] = \
                          self.rst.ReadAsArray(*self.gdal_slice ).astype(float)
 
-        #self.window_center = rx #not used !
+        # there is a problem with interpolation:
+        # if the analysis window stretches outside raster borders
+        # the last row/column will be interpolated with the fill value
+        # the solution is to copy the same values or to catch these vaules (eg. by initialising to np.nan)
+        if pad:
+            if x_offset_dist_mx:
+                self.window[:,in_slice_x[0] -1] = self.window[:,in_slice_x[0]]
+            # attention slice[:4] will give indices 0 to 3, so we need -1 to get the last index!
+            if x + rx + 1 > self.size[1]:
+                self.window[:,in_slice_x[1] ] =  self.window[:,in_slice_x[1] -1 ]
+
+            if y_offset_dist_mx:
+                self.window[in_slice_y[0] -1,:] = self.window[in_slice_y[0],:]
+
+            if y + rx + 1 > self.size[0]:
+                self.window[in_slice_y[1] , : ] = self.window[in_slice_y[1] -1, : ]
         
        
 
@@ -215,7 +228,7 @@ class Raster:
     All parameteres are copied from class properties
     because only one window is possible at a time.
     """
-    def add_result(self, in_array):
+    def add_to_buffer(self, in_array):
 
         y_in = slice(*self.inside_window_slice[0])
         x_in = slice(*self.inside_window_slice[1])
@@ -224,9 +237,9 @@ class Raster:
         m_in = in_array [y_in, x_in]
         
         # there is no buffer here, so no need to place properly
-        if self.mode <= 0: m = m_in
+        # if self.mode <= 0: pass
 
-        elif self.mode == 1: m += m_in
+        if self.mode == 1: m += m_in
             
         else:
             if self.mode == 2: operator = np.greater
@@ -250,22 +263,21 @@ class Raster:
     e.g. read a window from a gdal raster, sum, write back
        
     """
-    def write_result(self, dir_file = None,
+    def write_result(self, in_array=None, dir_file = None,
                      fill = np.nan, no_data = np.nan,
                      dataFormat = gdal.GDT_Float32):
 
-
-
-        file_name = self.output
+        
 
         if dir_file: #file inside a directory
-            file_name = path.join(self.output, dir_file + ".tif" )
+            file_name = path.join(self.directory, dir_file + ".tif")
+            
+        else: file_name = self.output
 
         driver = gdal.GetDriverByName('GTiff')
         ds = driver.Create(file_name, self.size[1], self.size[0], 1, dataFormat)
         ds.SetProjection(self.crs)
         ds.SetGeoTransform(self.rst.GetGeoTransform())
-
 
         ds.GetRasterBand(1).Fill(fill)
         ds.GetRasterBand(1).SetNoDataValue(no_data)
@@ -283,7 +295,7 @@ class Raster:
             y_in = slice(*self.inside_window_slice[0])
             x_in = slice(*self.inside_window_slice[1])
             #for writing gdal takes only x and y offset (1st 2 values of self.gdal_slice) 
-            ds.GetRasterBand(1).WriteArray(self.result [ y_in, x_in ],
+            ds.GetRasterBand(1).WriteArray(in_array [ y_in, x_in ],
                                            *self.gdal_slice[:2] )
             #self.offset[0], self.offset[1])
         ds = None

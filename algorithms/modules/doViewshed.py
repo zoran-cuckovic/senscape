@@ -23,17 +23,22 @@ from __future__ import division
 
 """
 BUGS
-- interpolation outside data window (on borders) : copy border values
+- interpolation outside data window (on borders) : copy border values [FIXED]
+- progress bar not working: everything just freezes during execution
 - add proper titles to produced layers !
-- finding highest position : should be circular
+- handling directory vs single file output (messy...)
+    can we format the dialog on the fly: block an option according to others? 
+- finding highest position : should be circular [NOT VITAL]
+- Limitations in cell size eg. : SAGA assumes that raster layers have the same cell size in the X and Y axis. If you are working with a layer with different values for horizontal and vertical cell size, you might get unexpected results. In this case, a warning will be added to the processing log,
+  indicating that an input layer might not be suitable to be processed by SAGA
 """
 
 from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+#from PyQt4.QtGui import *
 from qgis.core import *
-from qgis.utils import * #progress bar
+#from qgis.utils import * #progress bar
 import os
-from osgeo import osr, gdal, ogr
+#from osgeo import osr, gdal, ogr
 
 import time
 #_____Testing_____________
@@ -45,7 +50,7 @@ from math import sqrt, degrees, atan, atan2, tan
 from Points import Points
 from Raster import Raster
 
-
+from processing.gui.SilentProgress import SilentProgress
 
 BINARY_VIEWSHED = 0
 INVISIBILITY_DEPTH = 1
@@ -488,6 +493,8 @@ def Viewshed (points_class, raster_class,
 
                    
     prof.enable()
+
+    progress = SilentProgress()
     #########################
 
     
@@ -528,6 +535,7 @@ def Viewshed (points_class, raster_class,
     
     mx_indices, mx_err_indices, mx_err, mx_mask = error_matrix(radius_pix, algorithm)
 
+    cnt = 0
     for id1 in points :
 
          # x,y, EMPTY_z, x_geog, y_geog = points[id1] #unpack all = RETURNS STRINGS ??
@@ -560,9 +568,15 @@ def Viewshed (points_class, raster_class,
 
         
         # this routine is also asigning offsets of data window - to the Raster class!
-        raster_class.open_window (x, y, r_pix, initial_value = 0)
+        raster_class.open_window (x, y, r_pix,
+                                  initial_value = 0,
+                                  pad = algorithm > 0)
 
         data=raster_class.window
+
+        #used for calculating extracted area, for the report, and for horizon crop
+        # ... actually should be a function of raster class: get_area()
+        s_y, s_x = raster_class.inside_window_slice 
         
         z_abs = z + data [radius_pix,radius_pix]
         
@@ -587,7 +601,7 @@ def Viewshed (points_class, raster_class,
                                       mx_indices, mx_err_indices,
                                       target_matrix=mx_target,
                                       distance_matrix=mx_dist,
-                                      interpolate = algorithm > 0 )
+                                      interpolate = algorithm > 0)
 
 
         if output_options in [HORIZON, HORIZON_FULL]:
@@ -598,8 +612,6 @@ def Viewshed (points_class, raster_class,
             # forcing fake horizons on borders...
 
             msk = np.ones(data.shape).astype(bool)
-        
-            s_y, s_x = raster_class.inside_window_slice
                         
             msk[s_y[0] +1 : s_y[1] -1, s_x[0] +1 : s_x[1] -1]= False
 
@@ -612,24 +624,36 @@ def Viewshed (points_class, raster_class,
             matrix_vis[mask_circ]=np.nan
         else: matrix_vis[mask_circ]=0 
         
-        raster_class.add_result (matrix_vis)
 
-        # do writing here if there are multiple single files
-        if raster_class.mode == 0:
-            raster_class.write_result(dir_file=id1)
+        # do writing inside loop if required
+        if raster_class.mode <= 0:
+            # just to force it to write to single file, not to folder
+            if raster_class.mode ==-1: id1= None
+            
+            raster_class.write_result(dir_file=id1,
+                                      in_array=matrix_vis)
+            
+        else: raster_class.add_to_buffer (matrix_vis)
 
 
         #TODO: make some kind of general report system !
         # algo 0 is fast, so skip to save some time (??)
         if algorithm > 0:
+            #careful with areas outside raster ! 
+            view_m = matrix_vis[slice(*s_y), slice(*s_x)]
 
             if output_options == INVISIBILITY_DEPTH:
-               c= np.count_nonzero(matrix_vis >= 0) 
+               c= np.count_nonzero(view_m >= 0) 
 
-            else: c = np.count_nonzero(matrix_vis)
+            else: c = np.count_nonzero(view_m)
+            
+            s=np.count_nonzero(~mask_circ[slice(*s_y), slice(*s_x)])
            
-            rpt.append([id1,c] )    
-    
+            rpt.append([id1,c, s] )
+
+        cnt += 1
+        
+        progress.setPercentage((cnt/points_class.count) *100)
 
     """
     #TESTING #################
@@ -644,7 +668,11 @@ def Viewshed (points_class, raster_class,
     ps.print_stats()
     # print s.getvalue()
     """
-    if raster_class.mode != 0: raster_class.write_result()
+
+    test_rpt += "\n Total time: " + str (time.clock()- start)
+    print test_rpt
+    
+    if raster_class.mode > 0: raster_class.write_result()
 
     return rpt
 
