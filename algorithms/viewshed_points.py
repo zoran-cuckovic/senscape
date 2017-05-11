@@ -40,7 +40,8 @@ from processing.core.parameters import (ParameterRaster,
                                         ParameterSelection,
 					ParameterTableField,
                                         ParameterNumber,
-                                        ParameterRaster)	
+                                        ParameterRaster,
+                                        ParameterFile)	
 from processing.core.outputs import  OutputVector
 from processing.tools import dataobjects, vector
 
@@ -82,6 +83,8 @@ class ViewshedPoints(GeoAlgorithm):
     TARGET_HEIGHT_FIELD = 'TARGET_HEIGHT_FIELD'
 
     MOVE_TOP = 'MOVE_TOP'
+
+    OUTPUT_DIR = 'OUTPUT_DIR'
     
     def defineCharacteristics(self):
         """Here we define the inputs and output of the algorithm, along
@@ -150,7 +153,17 @@ class ViewshedPoints(GeoAlgorithm):
         self.addParameter(ParameterRaster(self.INPUT_DEM,
             self.tr('Elevation model for moving points'),  False))
 
+##        self.addOutput(OutputDirectory(
+##            self.OUTPUT_DIR,
+##            self.tr('Output directory (for multiple files)')))
 
+        self.addParameter(ParameterFile(
+            self.OUTPUT_DIR,
+            self.tr('Output directory (for multiple files)'),
+            isFolder = True))
+
+
+                    
         self.addOutput(OutputVector(self.OUTPUT_VECTOR,
                                     self.tr('Output viewshed points')))
 # optional param
@@ -196,8 +209,8 @@ class ViewshedPoints(GeoAlgorithm):
         move = self.getParameterValue(self.MOVE_TOP)
 
         
+        output_dir = self.getParameterValue(self.OUTPUT_DIR) 
         
-                        
         
                         # crs=  layer.crs().toWkt() #I do not have layer object ??
                         # write_mode = 'cumulative', if cumulative
@@ -209,8 +222,9 @@ class ViewshedPoints(GeoAlgorithm):
                            z_targ = target ,
                            field_ID = observer_id,
                            field_zobs = observer_height_field,
-                           field_ztarg=target_field,
-                           field_radius=radius_field)
+                           field_ztarg= target_field,
+                           field_radius= radius_field,
+                           folder = output_dir)
         
         if success != 0 :
             print success
@@ -220,7 +234,6 @@ class ViewshedPoints(GeoAlgorithm):
 
         if move:
             
-
             points.move_top(self.getParameterValue(self.INPUT_DEM), move)
         
         points.write_points (Output, points.crs)

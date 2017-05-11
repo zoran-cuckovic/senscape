@@ -20,7 +20,7 @@ It doesn't do any calculations besides combining analysed patches.
 class Raster:
 
     
-    def __init__(self, raster, output=None, crs=None, directory=None):
+    def __init__(self, raster, output=None, crs=None):
 	
 		
         gdal_raster=gdal.Open(raster)
@@ -66,7 +66,7 @@ class Raster:
         #(besides commanding dem.write_result(), without passing the path)
         #hacky ??
         self.output = output
-        self.directory = directory
+     
 
 
     """
@@ -77,11 +77,16 @@ class Raster:
     [ should be done in chunks for very large arrays - to implement ...]
     """
 
-    def set_buffer(self, mode, fill_nan=False):
+    def set_buffer_mode(self, mode):
 
         self.mode = mode
-        self.result = np.zeros(self.size)
-        if fill_nan : self.result [:] = np.nan
+        
+        #buffer is not needed for individual files
+        if mode > 0: self.result = np.zeros(self.size)
+        
+        # for summing up we need zeros,
+        # for min/max we need no_data
+        if mode > 1 : self.result [:] = np.nan
         
         
 
@@ -235,9 +240,7 @@ class Raster:
 
         m = self.result [self.window_slice]
         m_in = in_array [y_in, x_in]
-        
-        # there is no buffer here, so no need to place properly
-        # if self.mode <= 0: pass
+  
 
         if self.mode == 1: m += m_in
             
@@ -263,16 +266,13 @@ class Raster:
     e.g. read a window from a gdal raster, sum, write back
        
     """
-    def write_result(self, in_array=None, dir_file = None,
+    def write_result(self, in_array=None, file_name = None,
                      fill = np.nan, no_data = np.nan,
                      dataFormat = gdal.GDT_Float32):
 
         
 
-        if dir_file: #file inside a directory
-            file_name = path.join(self.directory, dir_file + ".tif")
-            
-        else: file_name = self.output
+        if not file_name: file_name = self.output
 
         driver = gdal.GetDriverByName('GTiff')
         ds = driver.Create(file_name, self.size[1], self.size[0], 1, dataFormat)

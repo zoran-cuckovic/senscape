@@ -26,8 +26,7 @@ BUGS
 - interpolation outside data window (on borders) : copy border values [FIXED]
 - progress bar not working: everything just freezes during execution
 - add proper titles to produced layers !
-- handling directory vs single file output (messy...)
-    can we format the dialog on the fly: block an option according to others? 
+- handling directory file output: makes an error message  
 - finding highest position : should be circular [NOT VITAL]
 - Limitations in cell size eg. : SAGA assumes that raster layers have the same cell size in the X and Y axis. If you are working with a layer with different values for horizontal and vertical cell size, you might get unexpected results. In this case, a warning will be added to the processing log,
   indicating that an input layer might not be suitable to be processed by SAGA
@@ -620,17 +619,22 @@ def Viewshed (points_class, raster_class,
         # ----------- MASKING ------------
         # TODO : complex masking ......
         mask_circ = mx_dist [:] > r
-        if output_options == INVISIBILITY_DEPTH:
-            matrix_vis[mask_circ]=np.nan
-        else: matrix_vis[mask_circ]=0 
-        
+
+        #we need zero background to sum up,
+        # but not for other options
+        fill = 0 if raster_class.mode == 1 else np.nan
+
+        matrix_vis[mask_circ]=fill
+            
+                
 
         # do writing inside loop if required
         if raster_class.mode <= 0:
-            # just to force it to write to single file, not to folder
-            if raster_class.mode ==-1: id1= None
-            
-            raster_class.write_result(dir_file=id1,
+
+            if raster_class.mode == -1: f_name = None
+            else: f_name = points[id1]["file"]
+                        
+            raster_class.write_result(file_name=f_name,
                                       in_array=matrix_vis)
             
         else: raster_class.add_to_buffer (matrix_vis)
@@ -652,7 +656,7 @@ def Viewshed (points_class, raster_class,
             rpt.append([id1,c, s] )
 
         cnt += 1
-        
+        # NOT WORKING, QGIS FREEZES
         progress.setPercentage((cnt/points_class.count) *100)
 
     """

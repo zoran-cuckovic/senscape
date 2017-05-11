@@ -2,7 +2,11 @@
 
 from PyQt4.QtCore import *
 from qgis.core import *
-import ogr, gdal
+
+from os import path
+
+import gdal #ogr
+
 import numpy as np
 
 import Raster as rst
@@ -28,15 +32,17 @@ class Points:
 
         #make a test !
         self.missing = []
-# ffff
 
-        fields = ["ID", "observ_hgt", "target_hgt", "radius"]
+        fields = ["ID", "observ_hgt",  "radius"]
         provider = self.layer.dataProvider()
 
      
         for f in fields:
             if provider.fieldNameIndex(f)==-1:
                 self.missing.append(f)
+
+        # optional missing
+        
         
         self.count = 0 # only take routine can determine the number of used points
         
@@ -54,7 +60,8 @@ class Points:
                         field_ID = None,
                         field_zobs = None,
                         field_ztarg=None,
-                        field_radius=None):
+                        field_radius=None,
+                        folder = None):
        
 
         errors=[]
@@ -81,32 +88,35 @@ class Points:
             if field_ID: id1 = feat[field_ID]
             else : id1 = feat.id()
 
-                     
-            #addition for possible field values.
-            #override with fixed parameters in case of problem 
-            if field_zobs :
-                try : z = float(feat[field_zobs])
-                except: z=z_obs
-
-            if field_ztarg:
-                try : zt = float(feat[field_target])
-                except: zt=z_targ
-
-            if field_radius:
-                try : r = float(feat[field_radius]) 
-                except: r=radius
-
-            
             # test for duplicates
             if id1 not in self.pt:
-
                 
-                              
-                self.pt[id1]={"z":z , "z_targ":zt, "radius" : r,
-                              "x_geog":x_geog, "y_geog" : y_geog }              
+                #addition for possible field values.
+                #override with fixed parameters in case of problem 
+                if field_zobs :
+                    try : z = float(feat[field_zobs])
+                    except: z=z_obs
+
+                if field_radius:
+                    try : r = float(feat[field_radius]) 
+                    except: r=radius
+                    
+                # obligatory prarameters        
+                self.pt[id1]={"z":z ,  "radius" : r,
+                              "x_geog":x_geog, "y_geog" : y_geog }
+
+                # optional 
+
+                if field_ztarg:
+                    try : self.pt[id1]["z_targ"] = float(feat[field_target])
+                    except: self.pt[id1]["z_targ"]=z_targ
+
+                if folder:
+                    self.pt[id1]["path"] = path.join(folder, str(id1) + ".tif")
+
+                    
      
             else: errors.append(id1)
-
 
         
         return errors if errors else 0
@@ -326,12 +336,18 @@ class Points:
 
             if r > self.max_radius : self.max_radius = r
             
+            try: tg = feat["target_hgt"]
+            except : tg = 0
+
+            try: f = feat["file"]
+            except: f = None
+            
             self.pt[ feat["ID"] ]={"z" : feat["observ_hgt"] ,
-                                    "z_targ": feat["target_hgt"],
+                                    "z_targ": tg,
                                     "radius" : r,
                                     "x_pix" : x, "y_pix":y,
-                                    "x_geog" :x_geog, "y_geog": y_geog}       
-
+                                    "file" : f}       
+                                    #"x_geog" :x_geog, "y_geog": y_geog,
         
         self.count = len(feature_ids)
         
@@ -342,12 +358,22 @@ class Points:
 
         from processing.tools.vector import VectorWriter
 
-        #QMessageBox.information(None, "Timing report:", str(data_list))
+
+        # test the existence of values in dict 
+        miss_tg = "target_hgt" not in self.pt.values()[0]
+        miss_file= "path" not in self.pt.values()[0]
+        
+        
         fields = QgsFields()
         fields.append ( QgsField("ID", QVariant.String, 'string',50))
         fields.append (QgsField("observ_hgt", QVariant.Double,'double', 5,4 ))
-        fields.append (QgsField("target_hgt", QVariant.Double,'double', 5,4 ))
+        
         fields.append ( QgsField("radius", QVariant.Double, 'double',10,3))
+        if not miss_tg:
+            fields.append (QgsField("target_hgt", QVariant.Double,'double', 5,4 ))
+        if not miss_file:
+            #windows has 260 character limit for filenames...
+            fields.append ( QgsField("file", QVariant.String, 'string',260))
 
         
 
@@ -378,9 +404,11 @@ class Points:
 
             feat['ID'] = r
             feat ['observ_hgt']=self.pt[r]["z"]
-            feat ['target_hgt']=self.pt[r]["z_targ"]
             feat ['radius']=self.pt[r]["radius"]
-            
+            if not miss_tg:
+                feat ['target_hgt']=self.pt[r]["z_targ"]
+            if not miss_file:
+                feat ['file']=self.pt[r]["path"]
             writer.addFeature(feat)
 
         del writer

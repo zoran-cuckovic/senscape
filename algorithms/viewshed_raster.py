@@ -11,7 +11,7 @@ from processing.core.parameters import (ParameterVector,
                                         ParameterBoolean,
                                         ParameterSelection,
                                         ParameterTableField)
-from processing.core.outputs import OutputRaster, OutputDirectory
+from processing.core.outputs import OutputRaster
 from processing.tools import dataobjects
 from processing.core.ProcessingLog import ProcessingLog
 
@@ -31,7 +31,7 @@ class Viewshed(GeoAlgorithm):
     ANALYSIS_TYPE = 'ANALYSIS_TYPE'
     OPERATOR = 'OPERATOR'
     OUTPUT = 'OUTPUT'
-    OUTPUT_DIR = 'OUTPUT_DIR'
+   
 
     PRECISIONS = ['Coarse','Normal', 'Fine']
     
@@ -80,11 +80,7 @@ class Viewshed(GeoAlgorithm):
             self.tr('Combining multiple outputs'),
             self.OPERATORS,
             0))
-        # would be cool if this widget get locked/unlocked according to chosen operator
-        self.addOutput(OutputDirectory(
-            self.OUTPUT_DIR,
-            self.tr('Output directory (for individual output)')))
-        # OutputDirectory( ...
+    
         self.addOutput(OutputRaster(
             self.OUTPUT,
             self.tr('Output file')))
@@ -111,7 +107,8 @@ class Viewshed(GeoAlgorithm):
         
 
         output_path = self.getOutputValue(self.OUTPUT)
-        output_dir = self.getOutputValue(self.OUTPUT_DIR)
+        # output_dir = self.getOutputValue(self.OUTPUT_DIR)
+
         # convert meters to layer distance units
         # [this can be confusing when the module is used in a script,
         #  and it's 3.0 function ]
@@ -167,17 +164,7 @@ class Viewshed(GeoAlgorithm):
         #special case: singe file
         elif points.count == 1: operator = -1
             
-
-        else: 
-            if operator > 0: dem.set_buffer(operator,
-                           fill_nan = True if operator > 1
-                                            else False) #default is 0
-
-        # to avoid passing this argument to doViewshed, register as property
-        # the idea is to clean doViewshed from handling raster input/output (??)
-        
-        if operator == 0:
-            dem.directory = output_dir
+        dem.set_buffer_mode(operator)
 
 	#will assign the result to dem class (?)	
         report =  ws.Viewshed (points, dem, 
