@@ -24,7 +24,7 @@ from __future__ import division
 """
 BUGS
 - interpolation outside data window (on borders) : copy border values [FIXED]
-- progress bar not working: everything just freezes during execution
+- progress bar not working: everything just freezes during execution [NOT VITAL]
 - add proper titles to produced layers !
 - handling directory file output: makes an error message  
 - finding highest position : should be circular [NOT VITAL]
@@ -49,7 +49,7 @@ from math import sqrt, degrees, atan, atan2, tan
 from Points import Points
 from Raster import Raster
 
-from processing.gui.SilentProgress import SilentProgress
+#from processing.gui.SilentProgress import SilentProgress NOT WORKING
 
 BINARY_VIEWSHED = 0
 INVISIBILITY_DEPTH = 1
@@ -493,7 +493,7 @@ def Viewshed (points_class, raster_class,
                    
     prof.enable()
 
-    progress = SilentProgress()
+    # progress = SilentProgress() # THIS MODULE IS EMPTY ??
     #########################
 
     
@@ -657,7 +657,7 @@ def Viewshed (points_class, raster_class,
 
         cnt += 1
         # NOT WORKING, QGIS FREEZES
-        progress.setPercentage((cnt/points_class.count) *100)
+       # progress.setPercentage((cnt/points_class.count) *100)
 
     """
     #TESTING #################
