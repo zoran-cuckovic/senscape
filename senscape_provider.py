@@ -2,7 +2,7 @@
 
 """
 /***************************************************************************
- Senspace
+ Senscape
                                  A QGIS plugin
  Description to fill
                               -------------------
@@ -49,7 +49,7 @@ from PyQt4.QtGui import QIcon
 from os import path
 
 
-class SenspaceProvider(AlgorithmProvider):
+class SenscapeProvider(AlgorithmProvider):
 
     MY_DUMMY_SETTING = 'MY_DUMMY_SETTING'
 
@@ -57,7 +57,7 @@ class SenspaceProvider(AlgorithmProvider):
         AlgorithmProvider.__init__(self)
 
         # Deactivate provider by default
-        self.activate = False
+        self.activate = True
 
         # Load algorithms
         self.alglist = [ Intervisibility(), Viewshed(), ViewshedPoints()  ]
@@ -80,7 +80,7 @@ class SenspaceProvider(AlgorithmProvider):
         """
         AlgorithmProvider.initializeSettings(self)
         ProcessingConfig.addSetting(Setting('Example algorithms',
-            SenspaceProvider.MY_DUMMY_SETTING,
+            SenscapeProvider.MY_DUMMY_SETTING,
             'Example setting', 'Default value'))
 
     def unload(self):
@@ -89,26 +89,30 @@ class SenspaceProvider(AlgorithmProvider):
         """
         AlgorithmProvider.unload(self)
         ProcessingConfig.removeSetting(
-            SenspaceProvider.MY_DUMMY_SETTING)
+            SenscapeProvider.MY_DUMMY_SETTING)
 
     def getName(self):
+	#def id(self):
+	
         """This is the name that will NOT!! appear on the toolbox group.
 
         It is also used to create the command line name of all the
         algorithms from this provider.
         """
-        return 'senspace'
+        return 'senscape'
 
     def getDescription(self):
+	#def name (self):
         """This is the provired full name.
         """
-        return 'Senspace'
+        return 'Senscape'
 
     def getIcon(self):
 
         """We return the default icon.
         
-	"""       
+	"""
+        
         return QIcon(path.dirname(__file__) + '/icon.png')
 
         #return AlgorithmProvider.getIcon(self)
