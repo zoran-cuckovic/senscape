@@ -2,6 +2,7 @@
 
 #from qgis.core import Qgis, QgsUnitTypes
 from PyQt4.QtGui import QMessageBox
+from os import path
 
 from processing.core.GeoAlgorithm import GeoAlgorithm
 from processing.core.GeoAlgorithmExecutionException import GeoAlgorithmExecutionException
@@ -118,10 +119,15 @@ class Intervisibility(GeoAlgorithm):
         
         t= pts.Points(targets)
 
-        if o.missing or t.missing :
+        required=["observ_hgt", "radius"]
+
+        miss1 = o.test_fields (required)
+        miss2 = t.test_fields (required)
+
+        if miss1 or miss2:
             QMessageBox.information(None, "Missing fields!",
-                "Missing in observer points: " + str(o.missing) +
-                "\n Missing in observer points: " + str(t.missing))
+                "Missing in observer points: " + str(miss1) +
+                "\n Missing in target points: " + str(miss2))
             return
 
         o.take(dem.extent, dem.pix)
@@ -135,3 +141,6 @@ class Intervisibility(GeoAlgorithm):
                                     interpolate = precision)
 
         o.write_network(output_path, relations, t) 
+
+        self.outputs[0].description = path.basename(output_path)[:-4]
+        

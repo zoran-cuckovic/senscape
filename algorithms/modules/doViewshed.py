@@ -479,7 +479,8 @@ Intervisibility calculation, however, is on point to point basis and has its own
 def Viewshed (points_class, raster_class, 
           output_options,
           Target_points=None,
-          curvature=0, refraction=0, algorithm = 1): 
+          curvature=0, refraction=0, algorithm = 1,
+          progress = None): 
 
           
 
@@ -500,7 +501,6 @@ def Viewshed (points_class, raster_class,
     #Obs_layer=QgsMapLayerRegistry.instance().mapLayer(Obs_points_layer)
    
    #Obs_layer = QgsVectorLayer(Obs_points_layer, 'o', 'ogr')
-
 
     ###########################"
     #read data, check etc
@@ -543,9 +543,9 @@ def Viewshed (points_class, raster_class,
         z= points[id1]["z"]; z_targ= points[id1]["z_targ"]
         
 
-        # radius is in pixels !
+        # radius is in pixel units !
         r=  points[id1]["radius"]
-        r_pix= int (r)
+     
 
         # all matrices are calculated for the maximum radius !!        
         
@@ -565,13 +565,14 @@ def Viewshed (points_class, raster_class,
 ##        elif output_options == INVISIBILITY_DEPTH: init_val = z_targ
 ##        else: init_val = 0
 
-        
+    
         # this routine is also asigning offsets of data window - to the Raster class!
-        raster_class.open_window (x, y, r_pix,
+        raster_class.open_window (x, y, radius_pix,
                                   initial_value = 0,
                                   pad = algorithm > 0)
 
         data=raster_class.window
+
 
         #used for calculating extracted area, for the report, and for horizon crop
         # ... actually should be a function of raster class: get_area()
@@ -620,45 +621,54 @@ def Viewshed (points_class, raster_class,
         # TODO : complex masking ......
         mask_circ = mx_dist [:] > r
 
-        #we need zero background to sum up,
-        # but not for other options
-        fill = 0 if raster_class.mode == 1 else np.nan
 
+        # we need zero background to sum up,
+        # but not for other options
+     
+        fill = 0 if raster_class.mode == 1 else np.nan
         matrix_vis[mask_circ]=fill
+        
+        #TODO: make some kind of general report system !
+        # algo 0 is fast, so skip to save some time (??)
+        if algorithm > 0 :
             
-                
+            sl = np.s_[slice(*s_y), slice(*s_x)]
+            #careful with areas outside raster ! 
+            view_m = matrix_vis[sl]
+
+            if output_options == INVISIBILITY_DEPTH:
+               c= np.count_nonzero(view_m >= 0) 
+
+            else:  c = np.count_nonzero(view_m)
+                 
+            # Count values outside mask (mask is True on the outside!)
+            crop =np.count_nonzero(mask_circ[sl])
+            # Here, nans are in the outside (which are not zero!)
+            if raster_class.mode != 1: c -= crop
+            # this is unmasked: sunbtract masked out areas!
+            rpt.append([id1, c , view_m.size-crop] )
+
+            
+
+            
 
         # do writing inside loop if required
         if raster_class.mode <= 0:
-
+            # None will force registered file path
             if raster_class.mode == -1: f_name = None
             else: f_name = points[id1]["file"]
                         
             raster_class.write_result(file_name=f_name,
                                       in_array=matrix_vis)
-            
+            out_files.append(f_name)            
         else: raster_class.add_to_buffer (matrix_vis)
 
 
-        #TODO: make some kind of general report system !
-        # algo 0 is fast, so skip to save some time (??)
-        if algorithm > 0:
-            #careful with areas outside raster ! 
-            view_m = matrix_vis[slice(*s_y), slice(*s_x)]
-
-            if output_options == INVISIBILITY_DEPTH:
-               c= np.count_nonzero(view_m >= 0) 
-
-            else: c = np.count_nonzero(view_m)
-            
-            s=np.count_nonzero(~mask_circ[slice(*s_y), slice(*s_x)])
-           
-            rpt.append([id1,c, s] )
 
         cnt += 1
         # NOT WORKING, QGIS FREEZES
-       # progress.setPercentage((cnt/points_class.count) *100)
-
+        try: progress.setPercentage( (cnt/points_class.count) *100)
+        except: print "not working"
     """
     #TESTING #################
     prof.disable()
@@ -674,11 +684,14 @@ def Viewshed (points_class, raster_class,
     """
 
     test_rpt += "\n Total time: " + str (time.clock()- start)
-    print test_rpt
     
-    if raster_class.mode > 0: raster_class.write_result()
-
-    return rpt
+    
+    if raster_class.mode > 0:
+        raster_class.write_result()#write using .output property
+        out_files.append(raster_class.output)
+    
+    # TODO : error signalling (catch from raster_class...)
+    return out_files, rpt
 
 ##    if output_options [1] == "cumulative" : return matrix_final
 ##    else: return matrix_vis

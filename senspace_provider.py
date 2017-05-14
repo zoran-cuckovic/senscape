@@ -112,9 +112,7 @@ class SenspaceProvider(AlgorithmProvider):
         return QIcon(path.dirname(__file__) + '/icon.png')
 
         #return AlgorithmProvider.getIcon(self)
-        
-        
-     
+
 
     def _loadAlgorithms(self):
         """Here we fill the list of algorithms in self.algs.

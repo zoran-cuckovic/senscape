@@ -33,7 +33,7 @@ class Points:
         #make a test !
         self.missing = []
 
-        fields = ["ID", "observ_hgt",  "radius"]
+        fields = ["ID", "observ_hgt", "target_hgt",  "radius", "file"]
         provider = self.layer.dataProvider()
 
      
@@ -45,7 +45,19 @@ class Points:
         
         
         self.count = 0 # only take routine can determine the number of used points
-        
+
+
+    """
+    check the existence of fields
+
+    """
+    def test_fields(self, field_list):
+
+        l=[]
+        if self.missing :
+            for e in field_list:
+                if e in self.missing: l.append(e)
+        return l
 
     """
     Take care of parameters. Leave geometries for other routine:
@@ -346,8 +358,9 @@ class Points:
                                     "z_targ": tg,
                                     "radius" : r,
                                     "x_pix" : x, "y_pix":y,
-                                    "file" : f}       
-                                    #"x_geog" :x_geog, "y_geog": y_geog,
+                                    "file" : f,     
+                                    "x_geog" :x_geog, "y_geog": y_geog}
+                                    # geog. coords are only used for writing vectors
         
         self.count = len(feature_ids)
         

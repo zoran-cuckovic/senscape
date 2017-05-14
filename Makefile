@@ -1,5 +1,5 @@
 #/***************************************************************************
-# Senspace
+# Senscape
 #
 # Description to fill
 #							 -------------------
@@ -38,13 +38,13 @@ LOCALES =
 # translation
 SOURCES = \
 	__init__.py \
-	senspace.py 
+	senscape.py 
 
-PLUGINNAME = Senspace
+PLUGINNAME = Senscape
 
 PY_FILES = \
 	__init__.py \
-	senspace.py 
+	senscape.py 
 
 UI_FILES = 
 

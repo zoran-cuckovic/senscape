@@ -2,6 +2,8 @@
 
 #from qgis.core import Qgis, QgsUnitTypes
 from PyQt4.QtGui import QMessageBox
+from qgis.core import *
+from os import path
 
 from processing.core.GeoAlgorithm import GeoAlgorithm
 from processing.core.GeoAlgorithmExecutionException import GeoAlgorithmExecutionException
@@ -10,10 +12,12 @@ from processing.core.parameters import (ParameterVector,
                                         ParameterNumber,
                                         ParameterBoolean,
                                         ParameterSelection,
-                                        ParameterTableField)
-from processing.core.outputs import OutputRaster
+                                        ParameterTableField,
+                                        ParameterFile)
+from processing.core.outputs import Output, OutputRaster
 from processing.tools import dataobjects
 from processing.core.ProcessingLog import ProcessingLog
+from processing.gui import MessageBarProgress
 
 from .modules import doViewshed as ws
 from .modules import Points as pts
@@ -80,10 +84,15 @@ class Viewshed(GeoAlgorithm):
             self.tr('Combining multiple outputs'),
             self.OPERATORS,
             0))
-    
+        
+       
         self.addOutput(OutputRaster(
             self.OUTPUT,
             self.tr('Output file')))
+    
+    def help(self):
+        return False, 'https://github.com/zoran-cuckovic/senscape/wiki/Visibility-raster-output'
+        
 
     def processAlgorithm(self, feedback):
 
@@ -107,6 +116,13 @@ class Viewshed(GeoAlgorithm):
         
 
         output_path = self.getOutputValue(self.OUTPUT)
+
+
+
+        #getTempFilenameInTempFolder(
+            #self.name + '.' + self.getDefaultFileExtension(alg)
+
+            
         # output_dir = self.getOutputValue(self.OUTPUT_DIR)
 
         # convert meters to layer distance units
@@ -146,12 +162,7 @@ class Viewshed(GeoAlgorithm):
         """       
                          
         points = pts.Points(observers)#
-        #normally  .missing is an (empty) list
-        if  points.missing :
-            
-            QMessageBox.information(None, "ERROR!",
-            "Missing fields! \n" + "\n".join(points.missing))
-            return
+
 
         points.take(dem.extent, dem.pix)
 
@@ -163,17 +174,54 @@ class Viewshed(GeoAlgorithm):
 
         #special case: singe file
         elif points.count == 1: operator = -1
+              
+        
+        required= ["observ_hgt", "radius"]
+        if operator == 0: required.append("file")
+
+        miss = points.test_fields(required)
+
+        if miss:
+            QMessageBox.information(None, "ERROR!",
+                "Missing fields! \n" + "\n".join(miss))
+            return
+            
             
         dem.set_buffer_mode(operator)
 
+        prog = MessageBarProgress.MessageBarProgress()
+
 	#will assign the result to dem class (?)	
-        report =  ws.Viewshed (points, dem, 
+        files, report =  ws.Viewshed (points, dem, 
                                 analysis_type,
                               Target_points=None,
                               curvature=useEarthCurvature,
                                 refraction=refraction,
-                                algorithm = 1)
+                                algorithm = 1,
+                                progress = prog )
 
+        prog.close()
+
+        
+        if operator==0:
+            #this is a hack: to clear outputs
+            #(there is a function "removeOutputFromName" but this is simpler ..) 
+            self.outputs=[]
+            for f in files:
+                #self.outputs = list of instances !
+                o = OutputRaster( "dd")
+                o.setValue(f)
+                # there is also .name property, but it's not working (?!)
+                o.description = path.basename(f)[:-4]
+##                print o.name
+                self.addOutput(o)
+
+                #name = os.path.basename(new_file)
+                #ProcessingResults.addResult(name, new_file)
+        else:
+             self.outputs[0].description = path.basename(output_path)[:-4]
+            
+##
         txt = "Analysed points \n ID : visible pixels : total area" 
         
         for l in report:
@@ -182,7 +230,6 @@ class Viewshed(GeoAlgorithm):
         ProcessingLog.addToLog ('INFO', txt) 
 
         
-
         """
         Is this a good practice? dem object has been modified in ws.Viewshed routine.
         But there is no sense in putting viewshed algorithm in Raster class,

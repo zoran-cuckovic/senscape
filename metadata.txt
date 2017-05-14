@@ -7,18 +7,18 @@
 # This file should be included when you package your plugin.# Mandatory items:
 
 [general]
-name=Senspace
+name=Senscape
 qgisMinimumVersion=2.0
-description=Senspace: sensible GIS
+description=Senscape: sensible GIS
 version=0.1
 author=Zoran Čučković
 email=N/A
 
-about=Senspace is a toolbox for modelling human perception of topography. For the moment, it features visibility analysis module. The plugin is being developed with help by Alexander Bruy.
+about=Senscape is a toolbox for modelling human perception of topography. For the moment, it features visibility analysis module. The plugin is being developed with help by Alexander Bruy.
 
 
-tracker=https://github.com/zoran-cuckovic/senspace/issues
-repository=https://github.com/zoran-cuckovic/senspace
+tracker=https://github.com/zoran-cuckovic/senscape/issues
+repository=https://github.com/zoran-cuckovic/senscape
 
 # End of mandatory metadata
 

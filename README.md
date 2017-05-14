@@ -1,10 +1,10 @@
-# Senspace
+# Senscape
 
-Senspace is a toolbox for modelling human perception of topography for QGIS, based on [QGIS viewshed module](https://github.com/zoran-cuckovic/QGIS-visibility-analysis). It is a subclass of QGIS processing framework and can be readily used in custom models or scripts.
+Senscape is a toolbox for modelling human perception of topography for QGIS, based on [QGIS viewshed module](https://github.com/zoran-cuckovic/QGIS-visibility-analysis). It is a subclass of QGIS processing framework and can be readily used in custom models or scripts.
 
 The plugin is in experimental phase.
 
-**To install:** see manual instalation of [QGIS viewshed module](https://github.com/zoran-cuckovic/QGIS-visibility-analysis). It should be placed in a folder named "Senspace", and enabled under QGIS processing options (besides being enabled as a plugin in QGIS plugin manager).
+**To install:** see manual instalation of [QGIS viewshed module](https://github.com/zoran-cuckovic/QGIS-visibility-analysis). It should be placed in a folder named "Senscape", and enabled under QGIS processing options (besides being enabled as a plugin in QGIS plugin manager).
 
 The plugin is being developed with help by Alexander Bruy. 
 

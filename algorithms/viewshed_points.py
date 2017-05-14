@@ -29,6 +29,7 @@ __copyright__ = '(C) 2017 by some'
 
 __revision__ = '$Format:%H$'
 
+from os import path
 from PyQt4.QtCore import QSettings
 from qgis.core import QgsVectorFileWriter
 
@@ -47,6 +48,10 @@ from processing.tools import dataobjects, vector
 
 
 from PyQt4.QtGui import * #this is for message box : should use processing log ?
+
+        
+from .modules import Points as pts
+from .modules import Raster as rst
 
 
 class ViewshedPoints(GeoAlgorithm):
@@ -85,6 +90,10 @@ class ViewshedPoints(GeoAlgorithm):
     MOVE_TOP = 'MOVE_TOP'
 
     OUTPUT_DIR = 'OUTPUT_DIR'
+
+    def help(self):
+        return False, 'https://github.com/zoran-cuckovic/senscape/wiki/Viewshed:-add-points'
+        
     
     def defineCharacteristics(self):
         """Here we define the inputs and output of the algorithm, along
@@ -177,16 +186,6 @@ class ViewshedPoints(GeoAlgorithm):
 ##                self.TYPE, 5))
 
     def processAlgorithm(self, progress):
-        
-	
-	# is it better to import here or on top ?
-        import gdal
-        from qgis.core import QgsRectangle
-        import numpy as np
-        
-        
-        from .modules import Points as pts
-        from .modules import Raster as rst
 
         # The first thing to do is retrieve the values of the parameters
         # entered by the user
@@ -237,6 +236,8 @@ class ViewshedPoints(GeoAlgorithm):
             points.move_top(self.getParameterValue(self.INPUT_DEM), move)
         
         points.write_points (Output, points.crs)
+
+        self.outputs[0].description = path.basename(Output)[:-4]
         
         """ 
         Perhaps there could be problems when registered crs
