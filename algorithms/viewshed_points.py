@@ -2,12 +2,12 @@
 
 """
 /***************************************************************************
- TestProcessing
+ Senscape
                                  A QGIS plugin
- Some descr
+ 
                               -------------------
         begin                : 2017-03-10
-        copyright            : (C) 2017 by some
+        copyright            : (C) 2017 by Zoran Čučković
         email                : some
  ***************************************************************************/
 
@@ -21,9 +21,9 @@
  ***************************************************************************/
 """
 
-__author__ = 'some'
+__author__ = 'Zoran Čučković'
 __date__ = '2017-03-10'
-__copyright__ = '(C) 2017 by some'
+__copyright__ = '(C) 2017 by Zoran Čučković'
 
 # This will get replaced with a git SHA1 when you do a git archive
 
@@ -92,7 +92,7 @@ class ViewshedPoints(GeoAlgorithm):
     OUTPUT_DIR = 'OUTPUT_DIR'
 
     def help(self):
-        return False, 'https://github.com/zoran-cuckovic/senscape/wiki/Viewshed:-add-points'
+        return False, 'http://zoran-cuckovic.github.io/senscape/help/points'
         
     
     def defineCharacteristics(self):
@@ -150,7 +150,7 @@ class ViewshedPoints(GeoAlgorithm):
         
         self.addParameter(ParameterTableField(
             self.TARGET_HEIGHT_FIELD,
-            self.tr('Target height, meters'),
+            self.tr('Field value for target height, meters'),
             self.OBSERVER_POINTS,
             optional=True))
 
@@ -237,7 +237,7 @@ class ViewshedPoints(GeoAlgorithm):
         
         points.write_points (Output, points.crs)
 
-        self.outputs[0].description = path.basename(Output)[:-4]
+        #self.outputs[0].description = path.basename(Output)[:-4]
         
         """ 
         Perhaps there could be problems when registered crs

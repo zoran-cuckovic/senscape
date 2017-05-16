@@ -4,7 +4,9 @@
 # embedding metadata in __init__.py will 
 # is no longer supported since version 2.0.
 
-# This file should be included when you package your plugin.# Mandatory items:
+# This file should be included when you package your plugin.
+
+# Mandatory items:
 
 [general]
 name=Senscape
@@ -14,7 +16,7 @@ version=0.1
 author=Zoran Čučković
 email=N/A
 
-about=Senscape is a toolbox for modelling human perception of topography. For the moment, it features visibility analysis module. The plugin is being developed with help by Alexander Bruy.
+about=Senscape is a toolbox for modelling human perception of topography. For the moment, it features visibility analysis module. The plugin was developed with help by Alexander Bruy.
 
 
 tracker=https://github.com/zoran-cuckovic/senscape/issues
@@ -30,7 +32,7 @@ repository=https://github.com/zoran-cuckovic/senscape
 # Tags are comma separated with spaces allowed
 tags=landscape, processing, raster, topography, dem
 
-homepage=N/A
+homepage=http://zoran-cuckovic.github.io/senscape
 category=Analysis
 icon=icon.png
 #icon souce : http://etc.usf.edu/clipart/galleries/972-decorative-letters-s

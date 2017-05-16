@@ -23,10 +23,7 @@ from __future__ import division
 
 """
 BUGS
-- interpolation outside data window (on borders) : copy border values [FIXED]
-- progress bar not working: everything just freezes during execution [NOT VITAL]
-- add proper titles to produced layers !
-- handling directory file output: makes an error message  
+- progress bar not working: nicer [NOT VITAL]
 - finding highest position : should be circular [NOT VITAL]
 - Limitations in cell size eg. : SAGA assumes that raster layers have the same cell size in the X and Y axis. If you are working with a layer with different values for horizontal and vertical cell size, you might get unexpected results. In this case, a warning will be added to the processing log,
   indicating that an input layer might not be suitable to be processed by SAGA
@@ -41,10 +38,10 @@ import os
 
 import time
 #_____Testing_____________
-from cProfile import Profile
+#from cProfile import Profile
 
 import numpy as np
-from math import sqrt, degrees, atan, atan2, tan
+from math import sqrt
 
 from Points import Points
 from Raster import Raster
@@ -81,20 +78,25 @@ def distance_matrix ( radius_pix, squared=False):
     temp_x= ((np.arange(full_window_size) - radius_pix) ) **2
     temp_y= ((np.arange(full_window_size) - radius_pix) ) **2
 
-    if not squared: return np.sqrt(temp_x[:,None] + temp_y[None,:])
+    if not squared:
+        return np.sqrt(temp_x[:,None] + temp_y[None,:])
+    # squared values
     else: return temp_x[:,None] + temp_y[None,:]
 
 """
 Model vertical drop from a plane to spherical surface (of the Earth)
+Note that it has to be multiplied with pixel size to get usable values
 
 """
-def curvature_matrix(radius_pix, diameter_earth_pixels, refraction):
+def curvature_matrix(radius_pix, diameter_earth, pixel_size, refraction):
 
     dist_squared = distance_matrix(radius_pix, squared=True)
     # all distances are in pixels in doViewshed module !!
-    #pixel_diameter = diameter_earth / pixel_size
+    # formula is  squared distance / diam_earth 
+    # need to divide all with pixel size (squared !!)
+    D = diameter_earth / (pixel_size **2)
         
-    return (dist_squared / diameter_earth_pixels) * 1 - refraction 
+    return (dist_squared / D) * (1 - refraction) 
 
 def error_matrix(radius, size_factor=1):
 
@@ -122,7 +124,7 @@ def error_matrix(radius, size_factor=1):
         #dy = x; dx = y 
         dy,dx= m, radius_large #SWAPPED x and y! MESSY
 
-        
+    
         #x and y = delta x and y but y is steep!
         #fist line is min y then it ascends till 45°
 
@@ -315,13 +317,11 @@ def rasterised_line (x,y, x2, y2, interpolation = True):
     Calculate intervisibilty lines from the observer point (always in the centre of the matrix)
     to target point (x2, y2).
     Has it's proper algorithm in order to avoid inaccuracies of the usual viewshed approach.
-
-    Interpolation can be avoided : no major improvement in time (cca 5%)!
-    Bresenham's loop: < 5% time
+    
     """
 
- 
-        
+  
+    
     dx = abs(x2 - x); dy = abs(y2 - y)
     steep = (dy > dx)
     #direction of movement : plus or minus in the coord. system
@@ -344,9 +344,11 @@ def rasterised_line (x,y, x2, y2, interpolation = True):
     
     #store indices 1) los, 2) neighbours, 3) error
     mx_line = np.zeros((dx_short, 2), dtype=int)
+    
     if interpolation:
         mx_neighbours = np.zeros((dx_short,2), dtype=int)
         mx_err = np.zeros((dx_short))
+        msk = np.ones((dx_short),dtype=bool)
 
 
     for i in xrange (0, dx_short): 
@@ -368,25 +370,39 @@ def rasterised_line (x,y, x2, y2, interpolation = True):
         
         mx_line[i, :] = [y, x] if not steep else [x, y] 
       
-        # for interpolation
-        # D is giving the amount and the direction of error
-        # because of flipping, we take y+sy, x+sx rather than y +/- 1  
-        if steep: mx_neighbours[i, :]=[x + sx if D > 0 else x - sx, y]
-        else: mx_neighbours[i, :]= [y + sy if D>0 else y - sy, x]
-        
-        mx_err [i]=D #error is D / dx !
+        if interpolation:
+ 
+            if D:
+                sD = -1 if D < 0 else 1
+                interp = y + sy *sD
 
-    return mx_line, mx_neighbours, mx_err/dx
+                if steep:
+                    mx_neighbours[i, :] = x, interp
+                else:
+                    mx_neighbours[i, :] = interp, x
+
+                mx_err [i]=D 
+  
+            else:   msk[i]=False
+
+    if interpolation:
+        #give zero-error points themselves as neighbours
+        # NB. this is not needed because error is 0; the result *= 0,
+        # but it's more clear this way, and will eliminate the possibility of stepping out of matrix
+        mx_neighbours[~msk, :]= mx_line[~msk, :]
+        
+        #error is actually D / dx !
+        mx_err[msk]/= dx # zero values will give nans on division!
+        return mx_line, mx_neighbours, abs(mx_err) 
+    else: return mx_line
             
 
-
-##
 """
-Calculates 
+Calculates intervisibility lines...
 
 """
 
-def intervisibility2 (points_class, targets_class, raster_class,
+def intervisibility (points_class, targets_class, raster_class,
                       curvature=0, refraction=0, interpolate = True):
 
 
@@ -394,9 +410,8 @@ def intervisibility2 (points_class, targets_class, raster_class,
     edges = {}
 
     # RasterPath= str(QgsMapLayerRegistry.instance().mapLayer(Raster_layer).dataProvider().dataSourceUri())
-    points = points_class.pt
-    targets = targets_class.pt
-
+    points, targets = points_class.pt, targets_class.pt
+    
     radius_pix = int(points_class.max_radius)
     
     raster_class.set_master_window(radius_pix)
@@ -407,9 +422,10 @@ def intervisibility2 (points_class, targets_class, raster_class,
         #everything is in pixels here, so the earth diam
         #has to accord!
         mx_curv = curvature_matrix(radius_pix,
-                    raster_class.get_diameter_earth(pixels=True),
+                    raster_class.get_diameter_earth(),
+                                   raster_class.pix,
                                     refraction )
-
+        
     else: mx_curv = 0
        
     for id1 in points :
@@ -422,14 +438,14 @@ def intervisibility2 (points_class, targets_class, raster_class,
         
         # radius is in pixels !
         r=  points[id1]["radius"]
-        r_pix= int (r)
+        #r_pix= int (r)
 
      
-        raster_class.open_window (x, y, r_pix)
+        raster_class.open_window (x, y, radius_pix)
 
         data=raster_class.window
         
-        z_abs = z + data [r_pix,r_pix]
+        z_abs = z + data [radius_pix,radius_pix]
         
         # level all according to observer
         data -=  z_abs + mx_curv 
@@ -438,34 +454,35 @@ def intervisibility2 (points_class, targets_class, raster_class,
 
         for id2 in tg:
             #adjust for local raster (diff x)
-            x2 = r_pix + (targets[id2]["x_pix"] - x)
-            y2 = r_pix + (targets[id2]["y_pix"] - y)
+            x2 = radius_pix + (targets[id2]["x_pix"] - x)
+            y2 = radius_pix + (targets[id2]["y_pix"] - y)
 
             angle_targ = data[y2,x2] 
+
             d = mx_dist[y2,x2]
             
             z_targ = targets[id2]["z_targ"]
             
-
             mx_line, mx_neighbours, mx_err = rasterised_line (
-                                    r_pix, r_pix, x2, y2,
+                                    radius_pix, radius_pix, x2, y2,
                                     interpolation= interpolate)
 
-            
             l_x, l_y = mx_line[:,1], mx_line[:,0]
 
             angles = data[l_y,l_x]            
             
             if interpolate:
                 n_x, n_y = mx_neighbours[:,1], mx_neighbours[:,0]
-                angles +=  (data[n_y, n_x] - angles) * abs(mx_err)
-                
-            size = (angle_targ - np.max(angles)) *d + z_targ
+                angles +=  (data[n_y, n_x] - angles) * mx_err
 
-            # when visible, it takes into account pixel elevation
-            # (rlative to preeceding one), this needs to be corrected
-            edges[id1, id2]= size # VERIFY ERRORS!! if size < z_targ else z_targ
-            #distance : use qgis, here it is pixelated!
+            # bare terrain!
+            depth = (angle_targ - np.max(angles)) * d
+            
+            # correct with target height only for invisible terrain,
+            # otherwise it adds to relative pixel height
+            edges[id1, id2] = z_targ if depth >= 0 else depth + z_targ
+
+            print id1, id2, depth
                           
     return edges  
     
@@ -489,21 +506,11 @@ def Viewshed (points_class, raster_class,
     test_rpt= "Start: " + str(start)
 
 
-    prof=Profile()
+    #prof=Profile()
 
                    
-    prof.enable()
+    #prof.enable()
 
-    # progress = SilentProgress() # THIS MODULE IS EMPTY ??
-    #########################
-
-    
-    #Obs_layer=QgsMapLayerRegistry.instance().mapLayer(Obs_points_layer)
-   
-   #Obs_layer = QgsVectorLayer(Obs_points_layer, 'o', 'ogr')
-
-    ###########################"
-    #read data, check etc
     out_files=[]
     rpt=[]
 
@@ -527,8 +534,10 @@ def Viewshed (points_class, raster_class,
         #everything is in pixels here, so the earth diam
         #has to be divided with pixel size!
         mx_curv = curvature_matrix(radius_pix,
-                raster_class.get_diameter_earth(pixels=True),
+                    raster_class.get_diameter_earth(),
+                    raster_class.pix,
                                refraction)
+
        
     else: mx_curv = 0
     
@@ -542,10 +551,8 @@ def Viewshed (points_class, raster_class,
         x,y= points[id1]["x_pix"],  points[id1]["y_pix"]
         z= points[id1]["z"]; z_targ= points[id1]["z_targ"]
         
-
         # radius is in pixel units !
-        r=  points[id1]["radius"]
-     
+        r=  points[id1]["radius"]  
 
         # all matrices are calculated for the maximum radius !!        
         
@@ -681,10 +688,10 @@ def Viewshed (points_class, raster_class,
     ps = pstats.Stats(prof, stream=s).sort_stats('cumulative')
     ps.print_stats()
     # print s.getvalue()
-    """
+    
 
     test_rpt += "\n Total time: " + str (time.clock()- start)
-    
+    """
     
     if raster_class.mode > 0:
         raster_class.write_result()#write using .output property
@@ -692,9 +699,6 @@ def Viewshed (points_class, raster_class,
     
     # TODO : error signalling (catch from raster_class...)
     return out_files, rpt
-
-##    if output_options [1] == "cumulative" : return matrix_final
-##    else: return matrix_vis
 
 
 

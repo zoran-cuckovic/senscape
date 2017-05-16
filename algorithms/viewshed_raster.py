@@ -91,7 +91,7 @@ class Viewshed(GeoAlgorithm):
             self.tr('Output file')))
     
     def help(self):
-        return False, 'https://github.com/zoran-cuckovic/senscape/wiki/Visibility-raster-output'
+        return False, 'http://zoran-cuckovic.github.io/senscape/help/raster'
         
 
     def processAlgorithm(self, feedback):
@@ -161,30 +161,35 @@ class Viewshed(GeoAlgorithm):
         ... to override one can do dem.crs = ....
         """       
                          
-        points = pts.Points(observers)#
+        points = pts.Points(observers)
 
-
-        points.take(dem.extent, dem.pix)
-
-
-        if points.count == 0:
-            QMessageBox.information(None, "ERROR!",
-            "No viewpoints in the chosen area.")
-            return
-
-        #special case: singe file
-        elif points.count == 1: operator = -1
-              
-        
-        required= ["observ_hgt", "radius"]
-        if operator == 0: required.append("file")
-
-        miss = points.test_fields(required)
+        miss = points.test_fields(["observ_hgt", "radius"])
 
         if miss:
             QMessageBox.information(None, "ERROR!",
                 "Missing fields! \n" + "\n".join(miss))
             return
+
+
+        points.take(dem.extent, dem.pix)
+
+        if points.count == 0:
+            QMessageBox.information(None, "ERROR!",
+                "No viewpoints in the chosen area!")
+            return
+        
+        #special case: singe file
+        elif points.count == 1: operator = -1
+        
+        # second test, after checking the number of points       
+        elif operator == 0:
+            miss = points.test_fields(["file"])
+            if miss:
+                QMessageBox.information(None, "ERROR!",
+                "Missing fields : file !")
+                return
+
+  
             
             
         dem.set_buffer_mode(operator)
@@ -197,7 +202,7 @@ class Viewshed(GeoAlgorithm):
                               Target_points=None,
                               curvature=useEarthCurvature,
                                 refraction=refraction,
-                                algorithm = 1,
+                                algorithm = precision,
                                 progress = prog )
 
         prog.close()
@@ -212,16 +217,18 @@ class Viewshed(GeoAlgorithm):
                 o = OutputRaster( "dd")
                 o.setValue(f)
                 # there is also .name property, but it's not working (?!)
-                o.description = path.basename(f)[:-4]
-##                print o.name
+                #o.description = path.basename(f)[:-4]
+
                 self.addOutput(o)
 
                 #name = os.path.basename(new_file)
                 #ProcessingResults.addResult(name, new_file)
-        else:
-             self.outputs[0].description = path.basename(output_path)[:-4]
+
+                # this is set in proseccing options !!
+##        else:
+##             self.outputs[0].description = path.basename(output_path)[:-4]
             
-##
+
         txt = "Analysed points \n ID : visible pixels : total area" 
         
         for l in report:

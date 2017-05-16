@@ -36,7 +36,11 @@ class Intervisibility(GeoAlgorithm):
 
     PRECISIONS = ['Coarse', 'Normal']
     PRECISION = 'PRECISION'
-    
+
+
+    def help(self):
+        return False, 'http://zoran-cuckovic.github.io/senscape/help/network'
+            
 
     def defineCharacteristics(self):
         self.name = 'Intervisibility'
@@ -133,14 +137,20 @@ class Intervisibility(GeoAlgorithm):
         o.take(dem.extent, dem.pix)
         t.take(dem.extent, dem.pix)
 
+        if o.count == 0 or t.count == 0:
+            QMessageBox.information(None, "ERROR!",
+                "No view points/target points in the chosen area!")
+            return
+            
+
         o.network(t) #do this after .take which takes points within raster extents
         	
-        relations =  ws.intervisibility2(o,t, dem,                                   
+        relations =  ws.intervisibility(o,t, dem,                                   
                                     curvature=useEarthCurvature,
                                     refraction=refraction,
                                     interpolate = precision)
 
         o.write_network(output_path, relations, t) 
 
-        self.outputs[0].description = path.basename(output_path)[:-4]
+       # self.outputs[0].description = path.basename(output_path)[:-4]
         

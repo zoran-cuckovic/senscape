@@ -11,6 +11,11 @@ import numpy as np
 
 import Raster as rst
 
+"""
+bugs:
+ - cannot use memory layers (cannot iterate through features) ?
+"""
+
 
 """
 Points class is creating a clean shapefile with analysis parameteres in
@@ -35,24 +40,22 @@ class Points:
 
         fields = ["ID", "observ_hgt", "target_hgt",  "radius", "file"]
         provider = self.layer.dataProvider()
-
-     
+        
         for f in fields:
             if provider.fieldNameIndex(f)==-1:
                 self.missing.append(f)
 
-        # optional missing
-        
+        # optional missing        
         
         self.count = 0 # only take routine can determine the number of used points
 
-
+        
     """
     check the existence of fields
 
     """
     def test_fields(self, field_list):
-
+        
         l=[]
         if self.missing :
             for e in field_list:
@@ -75,10 +78,9 @@ class Points:
                         field_radius=None,
                         folder = None):
        
-
         errors=[]
-       
-        
+
+             
         #feat = QgsFeature()
         
         #feature_iterator= layer.getFeatures() 
@@ -86,41 +88,37 @@ class Points:
         #while feat_iterator.nextFeature(feat):
 
         for feat in self.layer.getFeatures():
-
-            
             
             geom = feat.geometry()
             t = geom.asPoint()
 
             x_geog, y_geog= t
 
-            z,zt,r = z_obs, z_targ, radius
-         
+            #z,zt,r = z_obs, z_targ, radius
+            
 
-            if field_ID: id1 = feat[field_ID]
-            else : id1 = feat.id()
-
+            try: id1 = feat[field_ID]
+            except : id1 = feat.id()
+            
             # test for duplicates
             if id1 not in self.pt:
                 
                 #addition for possible field values.
                 #override with fixed parameters in case of problem 
-                if field_zobs :
-                    try : z = float(feat[field_zobs])
-                    except: z=z_obs
+                
+                try : z = float(feat[field_zobs])
+                except: z=z_obs
 
-                if field_radius:
-                    try : r = float(feat[field_radius]) 
-                    except: r=radius
+                try : r = float(feat[field_radius]) 
+                except: r=radius
                     
                 # obligatory prarameters        
                 self.pt[id1]={"z":z ,  "radius" : r,
                               "x_geog":x_geog, "y_geog" : y_geog }
 
-                # optional 
-
-                if field_ztarg:
-                    try : self.pt[id1]["z_targ"] = float(feat[field_target])
+                # optional
+                if z_targ or field_ztarg:
+                    try : self.pt[id1]["z_targ"] = float(feat[field_ztarg])
                     except: self.pt[id1]["z_targ"]=z_targ
 
                 if folder:
@@ -130,7 +128,6 @@ class Points:
      
             else: errors.append(id1)
 
-        
         return errors if errors else 0
          
        # self.max_radius = max(x, key=lambda i: x[i])
@@ -311,9 +308,8 @@ class Points:
     Returns a dict of points, prepared for visibilty analysis
     All values are expressed in pixel offsets.
 
-    This must work on a freshly loaded shapefile,
-    where points.missing is [] !!
-    [_or make a new function to test shapefiles_]
+    To make it robust: everything is in try - except blocks,
+    use .test_fields to check!
    
     """
     def take (self, extent, pix_size, spatial_index=None):
@@ -344,24 +340,30 @@ class Points:
             x = int((x_geog - x_min) / pix_size) # not float !
             y = int((y_max - y_geog) / pix_size) #reversed !
 
-            r = feat["radius"] / pix_size
-
-            if r > self.max_radius : self.max_radius = r
+            # optional fields
             
             try: tg = feat["target_hgt"]
             except : tg = 0
 
             try: f = feat["file"]
             except: f = None
-            
-            self.pt[ feat["ID"] ]={"z" : feat["observ_hgt"] ,
+
+            # required fields
+            try: 
+
+                r = feat["radius"] / pix_size
+
+                if r > self.max_radius : self.max_radius = r
+
+                self.pt[ feat["ID"] ]={"z" : feat["observ_hgt"] ,
                                     "z_targ": tg,
                                     "radius" : r,
                                     "x_pix" : x, "y_pix":y,
                                     "file" : f,     
                                     "x_geog" :x_geog, "y_geog": y_geog}
                                     # geog. coords are only used for writing vectors
-        
+            except: pass
+
         self.count = len(feature_ids)
         
 
@@ -371,11 +373,10 @@ class Points:
 
         from processing.tools.vector import VectorWriter
 
-
-        # test the existence of values in dict 
-        miss_tg = "target_hgt" not in self.pt.values()[0]
+        # test the existence of values in dict     
+        miss_tg = "z_targ" not in self.pt.values()[0]
         miss_file= "path" not in self.pt.values()[0]
-        
+
         
         fields = QgsFields()
         fields.append ( QgsField("ID", QVariant.String, 'string',50))
@@ -490,6 +491,7 @@ class Points:
                 feat ['target_hgt']=float(edges[r,t]) #why doesn't it accept Python numbers ??        
                 
                 writer.addFeature(feat)
+                
 
         del writer
         

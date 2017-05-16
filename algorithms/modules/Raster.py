@@ -109,7 +109,7 @@ class Raster:
     Diameter is expressed as half of the major axis plus half of the minor:
     this should work best for moderate latitudes.
     """
-    def get_diameter_earth (self, pixels=False):
+    def get_diameter_earth (self):
 
         crs= self.crs		
     
@@ -135,7 +135,7 @@ class Raster:
         
         diam = semiMajor + semiMinor 
         
-        return diam/self.pix if pixels else diam
+        return diam
 
  
     """
@@ -153,6 +153,8 @@ class Raster:
 
     Upon opening a window, all parameters regarding its size and position are
     registered in the Raster class instance - and reused for writing results
+
+    NOT WORKING : SMALLER WINDOW INSIDE MASTER WIN! 
     """
     def open_window (self, x, y, radius_pix, initial_value =0, pad = False):
 
@@ -160,8 +162,6 @@ class Raster:
         #to place smaller windows inside the master window
         diff_x = self.window.shape[1] - (rx *2 +1)
         diff_y =  self.window.shape[0] - (rx *2 +1)
-
-        
 
         if x <= rx:  #cropping from the front
             x_offset =0
@@ -288,7 +288,7 @@ class Raster:
 ##        else:
         
         #all modes > 0 operate on a copy of the raster
-        if self.mode:
+        if self.mode > 0:
             
             ds.GetRasterBand(1).WriteArray(self.result )
         else:
