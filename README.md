@@ -4,7 +4,11 @@ Senscape is a toolbox for modelling human perception of topography for QGIS, bas
 
 The plugin is in experimental phase.
 
-**To install:** see manual instalation of [QGIS viewshed module](https://github.com/zoran-cuckovic/QGIS-visibility-analysis). It should be placed in a folder named "Senscape", and enabled under QGIS processing options (besides being enabled as a plugin in QGIS plugin manager).
+**To install:** 
+1. Search for “Senscape” in QGIS plugin manager (make sure experimental plugins are allowed)
+2. In Processing menu, under Options, allow Senscape provider
+
+For manual instalation see [QGIS viewshed module](https://github.com/zoran-cuckovic/QGIS-visibility-analysis). Files should be placed in a folder named "Senscape", and enabled as in #2 (besides being enabled as a plugin in QGIS plugin manager).
 
 The plugin is being developed with help by Alexander Bruy. 
 
